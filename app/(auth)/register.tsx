@@ -59,9 +59,11 @@ export default function RegisterScreen() {
         kelas,
         sekolah,
       });
-      router.replace("/(tabs)");
+      router.replace("/(auth)/verify-email");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Registrasi gagal. Coba lagi.";
+      const rawMessage = err instanceof Error ? err.message : "Registrasi gagal. Coba lagi.";
+      const message =
+        rawMessage === "User already registered" ? "Email ini sudah terdaftar. Silakan login." : rawMessage;
       Alert.alert("Registrasi Gagal", message);
     }
   };
@@ -145,6 +147,9 @@ export default function RegisterScreen() {
         </Text>
         <Text style={{ marginTop: 4, fontSize: 14, color: CERDIK_COLORS.textSecondary }}>
           Mulai kebiasaan finansial sehat sejak SMA/MAN
+        </Text>
+        <Text style={{ marginTop: 8, fontSize: 12, textAlign: "center", color: CERDIK_COLORS.textSecondary }}>
+          Setelah daftar, akun akan aktif setelah kamu verifikasi email.
         </Text>
       </View>
 

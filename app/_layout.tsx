@@ -3,22 +3,35 @@ import { useEffect, useRef } from "react";
 import { AppState, AppStateStatus, StatusBar } from "react-native";
 
 import { CERDIK_COLORS } from "../constants/colors";
+import { supabase } from "../services/supabase";
 import { useAuthStore } from "../stores/useAuthStore";
+
+const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
 
 export default function RootLayout() {
   const backgroundAtRef = useRef<number | null>(null);
-  const { logout, touchSession } = useAuthStore();
-  const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
+  const { loadStoredAuth, logout, syncSession } = useAuthStore();
 
   useEffect(() => {
+    loadStoredAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      syncSession(session).catch(() => undefined);
+    });
+
     const onAppStateChange = async (state: AppStateStatus) => {
       if (state === "background" || state === "inactive") {
         backgroundAtRef.current = Date.now();
-        await touchSession();
+        await supabase.auth.stopAutoRefresh();
         return;
       }
 
-      if (state === "active" && backgroundAtRef.current) {
+      if (state === "active") {
+        await supabase.auth.startAutoRefresh();
+
+        if (!backgroundAtRef.current) return;
         const elapsed = Date.now() - backgroundAtRef.current;
         backgroundAtRef.current = null;
         if (elapsed > SESSION_TIMEOUT_MS) {
@@ -30,8 +43,11 @@ export default function RootLayout() {
     };
 
     const sub = AppState.addEventListener("change", onAppStateChange);
-    return () => sub.remove();
-  }, [logout, touchSession]);
+    return () => {
+      sub.remove();
+      subscription.unsubscribe();
+    };
+  }, [loadStoredAuth, logout, syncSession]);
 
   return (
     <>
@@ -56,6 +72,8 @@ export default function RootLayout() {
           }}
         />
         <Stack.Screen name="(auth)/register" options={{ title: "Daftar" }} />
+        <Stack.Screen name="(auth)/verify-email" options={{ title: "Cek Email" }} />
+        <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="profile" options={{ title: "Pengaturan" }} />
       </Stack>

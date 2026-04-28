@@ -51,17 +51,14 @@ export default function LoginScreen() {
       await login({ email: email.trim(), password });
       router.replace("/(tabs)");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Login gagal. Coba lagi.";
+      const rawMessage = error instanceof Error ? error.message : "Login gagal. Coba lagi.";
+      const message =
+        rawMessage === "Invalid login credentials"
+          ? "Email atau password salah."
+          : rawMessage === "Email not confirmed"
+            ? "Email kamu belum diverifikasi. Cek inbox lalu coba login lagi."
+            : rawMessage;
       showErrorToast(message);
-    }
-  };
-
-  const handleGuestLogin = async () => {
-    try {
-      await login({ email: "guest@cerdik.app", password: "guest123" });
-      router.replace("/(tabs)");
-    } catch {
-      showErrorToast("Mode guest sedang bermasalah. Coba lagi.");
     }
   };
 
@@ -114,14 +111,9 @@ export default function LoginScreen() {
         />
 
         <CerdikButton title="Masuk" onPress={handleLogin} loading={isLoading} />
-        <View style={{ marginTop: 12 }}>
-          <CerdikButton
-            title="Masuk sebagai Guest"
-            onPress={handleGuestLogin}
-            variant="secondary"
-            disabled={isLoading}
-          />
-        </View>
+        <Text style={{ marginTop: 12, fontSize: 12, lineHeight: 18, color: CERDIK_COLORS.textSecondary }}>
+          Akun baru harus verifikasi email dulu sebelum bisa login.
+        </Text>
       </CerdikCard>
 
       <Link

@@ -50,8 +50,12 @@ export default function ProfileScreen() {
       Alert.alert("Lengkapi Profil", "Nama, kelas, dan sekolah wajib diisi.");
       return;
     }
-    await updateProfile({ name: name.trim(), kelas: kelas.trim(), sekolah: sekolah.trim() });
-    Alert.alert("Tersimpan", "Profil kamu berhasil diperbarui.");
+    try {
+      await updateProfile({ name: name.trim(), kelas: kelas.trim(), sekolah: sekolah.trim() });
+      Alert.alert("Tersimpan", "Profil kamu berhasil diperbarui.");
+    } catch (error) {
+      Alert.alert("Gagal Menyimpan", error instanceof Error ? error.message : "Coba lagi sebentar.");
+    }
   };
 
   const toggleDailyNotif = async (value: boolean) => {
@@ -99,6 +103,7 @@ export default function ProfileScreen() {
         </View>
         <Text style={{ fontSize: 18, fontWeight: "800", color: CERDIK_COLORS.textPrimary }}>Pengaturan</Text>
         <Text style={{ marginTop: 4, color: CERDIK_COLORS.textSecondary }}>CERDIK v1.0.0</Text>
+        <Text style={{ marginTop: 4, color: CERDIK_COLORS.textSecondary }}>{user?.email ?? "-"}</Text>
       </View>
 
       <CerdikCard style={{ marginBottom: 12 }}>
