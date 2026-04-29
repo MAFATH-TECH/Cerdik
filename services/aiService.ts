@@ -1,26 +1,76 @@
-import { api } from "./api";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 
-const CERDIK_SYSTEM_PROMPT = `Kamu adalah CERDIK AI, asisten keuangan personal untuk siswa SMA/MAN.
-Bantu siswa mengelola keuangan dengan bahasa yang friendly, singkat, dan mudah dipahami remaja.
-Berikan saran praktis yang relevan. Jangan gunakan istilah keuangan yang terlalu teknis.`;
+import { supabase } from "./supabase";
+import { useTransactionStore } from "../stores/useTransactionStore";
 
-export async function getCerdikAdvice(
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export async function sendMessageToAI(
   userMessage: string,
-  financialContext: Record<string, unknown>,
+  chatHistory: ChatMessage[],
 ): Promise<string> {
-  try {
-    const response = await api.post("/api/ai/chat", {
-      systemPrompt: CERDIK_SYSTEM_PROMPT,
-      message: userMessage,
-      context: financialContext,
-    });
+  const { summary, transactions } = useTransactionStore.getState();
 
-    const text = response?.data?.reply as string | undefined;
-    if (text && text.trim().length > 0) {
-      return text;
-    }
-    throw new Error("AI response is empty");
-  } catch {
-    return "Maaf, CERDIK AI sedang sibuk. Coba lagi sebentar ya. Sementara itu, fokus kurangi pengeluaran yang paling sering muncul dulu.";
+  const financialContext = {
+    total_pemasukan: summary?.totalIncome ?? 0,
+    total_pengeluaran: summary?.totalExpense ?? 0,
+    sisa: (summary?.totalIncome ?? 0) - (summary?.totalExpense ?? 0),
+    persentase_tabungan: summary?.totalIncome
+      ? Math.round(((summary.totalIncome - summary.totalExpense) / summary.totalIncome) * 100)
+      : 0,
+    pengeluaran_per_kategori: summary?.byCategory ?? [],
+    jumlah_transaksi: transactions.length,
+  };
+
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  const publishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  // Edge Function gateway pada project ini menerima publishable key.
+  const apiKey = publishableKey ?? anonKey;
+  if (!supabaseUrl || !apiKey) {
+    throw new Error("Supabase URL / API key belum diatur untuk memanggil Edge Function.");
   }
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const { data, error } = await supabase.functions.invoke("ai-chat", {
+    headers: {
+      apikey: apiKey,
+      Authorization: `Bearer ${session?.access_token ?? apiKey}`,
+    },
+    body: JSON.stringify({
+      message: userMessage,
+      financialContext,
+      chatHistory: chatHistory.slice(-10),
+    }),
+  });
+
+  if (error) {
+    if (error instanceof FunctionsHttpError) {
+      try {
+        const details = await error.context.json();
+        const detailMessage =
+          typeof details?.error === "string"
+            ? details.error
+            : typeof details?.message === "string"
+              ? details.message
+              : error.message;
+        throw new Error(detailMessage);
+      } catch {
+        throw new Error(error.message);
+      }
+    }
+    throw new Error(error.message);
+  }
+
+  if (typeof data?.message !== "string" || !data.message.trim()) {
+    throw new Error("AI response kosong.");
+  }
+
+  return data.message;
 }

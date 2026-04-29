@@ -29,6 +29,7 @@ type TransactionState = {
   deleteTransaction: (id: string) => Promise<void>;
   loadSummary: () => Promise<void>;
   setSelectedPeriod: (month: number, year: number) => Promise<void>;
+  resetState: () => void;
 };
 
 const getNowMonth = () => new Date().getMonth() + 1; // 1-12
@@ -121,5 +122,16 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
     } finally {
       set({ isLoading: false });
     }
+  },
+
+  resetState: () => {
+    set({
+      transactions: [],
+      summary: null,
+      isLoading: false,
+      error: null,
+      selectedMonth: getNowMonth(),
+      selectedYear: getNowYear(),
+    });
   },
 }));

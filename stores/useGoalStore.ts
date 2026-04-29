@@ -13,6 +13,7 @@ type GoalState = {
   createGoal: (data: { name: string; emoji: string; target_amount: number; deadline: string; note?: string }) => Promise<void>;
   addContribution: (goalId: string, amount: number, note?: string) => Promise<void>;
   deleteGoal: (id: string) => Promise<void>;
+  resetState: () => void;
 };
 
 export const useGoalStore = create<GoalState>((set, get) => ({
@@ -83,5 +84,13 @@ export const useGoalStore = create<GoalState>((set, get) => ({
     } finally {
       set({ isLoading: false });
     }
+  },
+
+  resetState: () => {
+    set({
+      goals: [],
+      isLoading: false,
+      error: null,
+    });
   },
 }));

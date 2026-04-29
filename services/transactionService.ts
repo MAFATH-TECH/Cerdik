@@ -101,6 +101,42 @@ export const transactionService = {
     }));
   },
 
+  async getTransactionsInRange(options: { from: Date; to: Date }): Promise<Transaction[]> {
+    const userId = await getAuthedUserId();
+
+    // `date` kolom adalah tipe DATE di Postgres, jadi kita pakai string YYYY-MM-DD.
+    const toDateOnlyLocal = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    };
+
+    const fromStr = toDateOnlyLocal(options.from);
+    const toStr = toDateOnlyLocal(options.to);
+
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("id, type, amount, category, note, date, created_at")
+      .eq("user_id", userId)
+      .gte("date", fromStr)
+      .lt("date", toStr)
+      .order("date", { ascending: false })
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    return (data ?? []).map((row: any) => ({
+      id: row.id,
+      type: row.type,
+      amount: typeof row.amount === "number" ? row.amount : Number(row.amount),
+      category: row.category,
+      note: row.note ?? "",
+      date: row.date,
+      createdAt: row.created_at,
+    }));
+  },
+
   async getTransactionSummary(month: number, year: number): Promise<{
     totalIncome: number;
     totalExpense: number;

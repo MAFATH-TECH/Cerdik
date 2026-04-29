@@ -1,12 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { ScreenError } from "@/components/ui/ScreenState";
 import { CERDIK_COLORS } from "../../constants/colors";
-import { Goal, useGoalStore } from "../../stores/useGoalStore";
+import { useGoalStore } from "../../stores/useGoalStore";
 import { Transaction, useTransactionStore } from "../../stores/useTransactionStore";
-import { getCerdikAdvice } from "../../services/aiService";
+import { sendMessageToAI, type ChatMessage as AIChatMessage } from "../../services/aiService";
 
 type ChatMessage = {
   id: string;
@@ -25,7 +25,7 @@ type Recommendation = {
 const QUICK_QUESTIONS = [
   "Bagaimana kondisi keuanganku?",
   "Tips hemat untuk pelajar",
-  "Bantu saya buat rencana menabung",
+  "Bantu buat rencana menabung",
   "Apa pengeluaran terborosku?",
 ];
 
@@ -33,16 +33,32 @@ const formatRupiah = (value: number) => `Rp ${new Intl.NumberFormat("id-ID").for
 const getTxDateValue = (tx: Partial<Transaction>) => tx.date ?? tx.createdAt ?? new Date().toISOString();
 
 export default function InisiasiScreen() {
-  const { transactions, loadTransactions, isLoading: txLoading, error: txError } = useTransactionStore();
+  const { transactions, loadTransactions, loadSummary, isLoading: txLoading, error: txError } = useTransactionStore();
   const { goals, loadGoals, isLoading: goalLoading, error: goalError } = useGoalStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
-  const [isAiTyping, setIsAiTyping] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const typingOpacity = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
     loadTransactions();
+    loadSummary();
     loadGoals();
-  }, [loadTransactions, loadGoals]);
+  }, [loadGoals, loadSummary, loadTransactions]);
+
+  useEffect(() => {
+    if (!isTyping) return;
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(typingOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.timing(typingOpacity, { toValue: 0.35, duration: 500, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [isTyping, typingOpacity]);
 
   const sourceTransactions = transactions;
   const activeGoal = goals.find((goal) => !goal.isCompleted) ?? null;
@@ -50,6 +66,7 @@ export default function InisiasiScreen() {
   const blockingError = txError || goalError;
   const retry = () => {
     loadTransactions();
+    loadSummary();
     loadGoals();
   };
 
@@ -110,67 +127,62 @@ export default function InisiasiScreen() {
     return result.slice(0, 5);
   }, [sourceTransactions, activeGoal, txLoading, goalLoading]);
 
-  const financialContext = useMemo(() => {
-    const monthKey = new Date().toISOString().slice(0, 7);
-    const monthTransactions = sourceTransactions.filter(
-      (tx) => getTxDateValue(tx).slice(0, 7) === monthKey,
-    );
-    const income = monthTransactions
-      .filter((tx) => tx.type === "income")
-      .reduce((sum, tx) => sum + tx.amount, 0);
-    const expense = monthTransactions
-      .filter((tx) => tx.type === "expense")
-      .reduce((sum, tx) => sum + tx.amount, 0);
-    const topExpense = monthTransactions
-      .filter((tx) => tx.type === "expense")
-      .sort((a, b) => b.amount - a.amount)[0];
+  const scrollToBottom = () => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+  };
 
-    return {
-      period: monthKey,
-      totalIncome: income,
-      totalExpense: expense,
-      net: income - expense,
-      topExpenseCategory: topExpense?.category ?? null,
-      topExpenseAmount: topExpense?.amount ?? null,
-      activeGoal: activeGoal
-        ? {
-            name: activeGoal.name,
-            targetAmount: activeGoal.targetAmount,
-            currentAmount: activeGoal.currentAmount,
-          }
-        : null,
-      latestTransactions: monthTransactions.slice(0, 10),
-    };
-  }, [sourceTransactions, activeGoal]);
-
-  const sendMessage = async (messageText: string) => {
+  const handleSend = async (messageText = inputText) => {
     const trimmed = messageText.trim();
-    if (!trimmed || isAiTyping) return;
+    if (!trimmed || isTyping || blockingError) return;
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       sender: "user",
       text: trimmed,
     };
-    setMessages((prev) => [...prev, userMessage]);
-    setInputText("");
-    setIsAiTyping(true);
 
-    const aiText = await getCerdikAdvice(trimmed, financialContext);
-    const aiMessage: ChatMessage = {
-      id: `ai-${Date.now()}`,
-      sender: "ai",
-      text: aiText,
-    };
-    setMessages((prev) => [...prev, aiMessage]);
-    setIsAiTyping(false);
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
+    setInputText("");
+    setIsTyping(true);
+    scrollToBottom();
+
+    try {
+      const historyForAI: AIChatMessage[] = nextMessages.map((msg) => ({
+        role: msg.sender === "user" ? "user" : "assistant",
+        content: msg.text,
+      }));
+
+      const aiText = await sendMessageToAI(trimmed, historyForAI);
+      const aiMessage: ChatMessage = {
+        id: `ai-${Date.now()}`,
+        sender: "ai",
+        text: aiText,
+      };
+      setMessages((prev) => [...prev, aiMessage]);
+    } catch (error) {
+      const aiMessage: ChatMessage = {
+        id: `ai-${Date.now()}`,
+        sender: "ai",
+        text:
+          error instanceof Error
+            ? `Maaf, CERDIK AI sedang bermasalah: ${error.message}`
+            : "Maaf, CERDIK AI sedang sibuk. Coba lagi sebentar ya.",
+      };
+      setMessages((prev) => [...prev, aiMessage]);
+    } finally {
+      setIsTyping(false);
+      scrollToBottom();
+    }
   };
 
   const showQuickReplies = messages.length === 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}>
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 14 }}>
+      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 20, paddingBottom: 14 }}>
         <Text style={{ fontSize: 24, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
           Inisiasi AI Saran
         </Text>
@@ -338,7 +350,7 @@ export default function InisiasiScreen() {
             );
           })}
 
-          {isAiTyping ? (
+          {isTyping ? (
             <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
               <View
                 style={{
@@ -353,16 +365,17 @@ export default function InisiasiScreen() {
               >
                 <Ionicons name="sparkles" size={14} color="#FFFFFF" />
               </View>
-              <View
+              <Animated.View
                 style={{
                   borderRadius: 14,
                   paddingHorizontal: 12,
                   paddingVertical: 9,
                   backgroundColor: "#F1F5F9",
+                  opacity: typingOpacity,
                 }}
               >
                 <Text style={{ color: CERDIK_COLORS.textSecondary }}>• • •</Text>
-              </View>
+              </Animated.View>
             </View>
           ) : null}
 
@@ -371,7 +384,7 @@ export default function InisiasiScreen() {
               {QUICK_QUESTIONS.map((question) => (
                 <Pressable
                   key={question}
-                  onPress={() => sendMessage(question)}
+                  onPress={() => handleSend(question)}
                   style={{
                     borderWidth: 1,
                     borderColor: "#E2E8F0",
@@ -404,7 +417,7 @@ export default function InisiasiScreen() {
               }}
             />
             <Pressable
-              onPress={() => sendMessage(inputText)}
+              onPress={() => handleSend(inputText)}
               style={{
                 marginLeft: 8,
                 width: 42,

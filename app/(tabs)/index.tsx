@@ -2,16 +2,19 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import SummaryCard from "@/components/ui/SummaryCard";
 import { useEarlyWarning } from "@/hooks/useEarlyWarning";
+import { userSettingsService } from "@/services/userSettingsService";
 import { CERDIK_COLORS } from "../../constants/colors";
 import { useAuthStore } from "../../stores/useAuthStore";
-import { Goal, useGoalStore } from "../../stores/useGoalStore";
+import { useGoalStore } from "../../stores/useGoalStore";
 import { Transaction, useTransactionStore } from "../../stores/useTransactionStore";
 import { transactionService } from "@/services/transactionService";
+import { goalService } from "@/services/goalService";
 
 const rupiahFormatter = new Intl.NumberFormat("id-ID");
 
@@ -34,34 +37,55 @@ const mapCategoryIcon = (category: string): keyof typeof Ionicons.glyphMap => {
   return "ellipsis-horizontal-circle-outline";
 };
 
-const MOCK_GOAL: Goal = {
-  id: "g1",
-  name: "Laptop Belajar",
-  emoji: "💻",
-  targetAmount: 3500000,
-  currentAmount: 1400000,
-  deadline: "2026-08-20T00:00:00.000Z",
-  note: "Buat belajar coding",
-  isCompleted: false,
-  createdAt: "2026-04-01T00:00:00.000Z",
-};
-
 export default function HomeScreen() {
   const [showBalance, setShowBalance] = useState(true);
   const [dismissedWarningIds, setDismissedWarningIds] = useState<string[]>([]);
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [weeklyExpenseLimit, setWeeklyExpenseLimit] = useState(0);
   const { user } = useAuthStore();
   const { transactions, loadTransactions, loadSummary, isLoading: txLoading, summary } = useTransactionStore();
   const { goals, loadGoals } = useGoalStore();
 
-  const activeGoal = goals.find((goal) => !goal.isCompleted) ?? MOCK_GOAL;
-  const warnings = useEarlyWarning({ transactions, goals });
+  const activeGoals = goals.filter((goal) => !goal.isCompleted);
+  const warnings = useEarlyWarning();
   const visibleWarnings = warnings.filter((w) => !dismissedWarningIds.includes(w.id));
-  const highWarnings = visibleWarnings.filter((w) => w.severity === "high");
-  const mediumWarnings = visibleWarnings.filter((w) => w.severity === "medium");
-  const lowWarnings = visibleWarnings.filter((w) => w.severity === "low");
+  const topWarning = visibleWarnings[0] ?? null;
+  const hiddenWarningCount = Math.max(0, visibleWarnings.length - 1);
+
+  const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const warningStorageKey = useMemo(() => `cerdik:ews:dismissed:${todayKey}`, [todayKey]);
+
+  const dismissWarning = useCallback(
+    async (id: string) => {
+      setDismissedWarningIds((prev) => {
+        if (prev.includes(id)) return prev;
+        const next = [...prev, id];
+        AsyncStorage.setItem(warningStorageKey, JSON.stringify(next)).catch(() => undefined);
+        return next;
+      });
+    },
+    [warningStorageKey],
+  );
+
+  const loadDismissedWarnings = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(warningStorageKey);
+      if (!raw) {
+        setDismissedWarningIds([]);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setDismissedWarningIds(parsed.filter((item) => typeof item === "string"));
+      } else {
+        setDismissedWarningIds([]);
+      }
+    } catch {
+      setDismissedWarningIds([]);
+    }
+  }, [warningStorageKey]);
 
   const loadRecent = useCallback(async () => {
     setRecentLoading(true);
@@ -75,6 +99,15 @@ export default function HomeScreen() {
     }
   }, []);
 
+  const loadWeeklyLimit = useCallback(async () => {
+    try {
+      const settings = await userSettingsService.getSettings();
+      setWeeklyExpenseLimit(settings.weeklyExpenseLimit);
+    } catch {
+      setWeeklyExpenseLimit(0);
+    }
+  }, []);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -82,29 +115,32 @@ export default function HomeScreen() {
       await loadSummary();
       await loadRecent();
       await loadGoals();
+      await loadWeeklyLimit();
     } finally {
       setRefreshing(false);
     }
-  }, [loadGoals, loadRecent, loadSummary, loadTransactions]);
+  }, [loadGoals, loadRecent, loadSummary, loadTransactions, loadWeeklyLimit]);
 
   useFocusEffect(
     useCallback(() => {
       const run = async () => {
+        await loadDismissedWarnings();
         await loadTransactions();
         await loadSummary();
         await loadGoals();
         await loadRecent();
+        await loadWeeklyLimit();
       };
       run().catch(() => undefined);
-    }, [loadGoals, loadRecent, loadSummary, loadTransactions]),
+    }, [loadDismissedWarnings, loadGoals, loadRecent, loadSummary, loadTransactions, loadWeeklyLimit]),
   );
 
   useEffect(() => {
-    if (highWarnings.length > 0 || mediumWarnings.length > 0) {
+    if (topWarning?.severity === "high" || topWarning?.severity === "medium") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [highWarnings.length, mediumWarnings.length]);
+  }, [topWarning?.id, topWarning?.severity]);
 
   const thisMonthTransactions = useMemo(() => {
     const now = new Date();
@@ -121,7 +157,6 @@ export default function HomeScreen() {
     .reduce((total, tx) => total + tx.amount, 0);
   const netBalance = summary?.net ?? 0;
   const latestTransactions = recentTransactions;
-  const goalProgress = Math.min(100, Math.round((activeGoal.currentAmount / activeGoal.targetAmount) * 100));
   const studentName = user?.name ?? "Siswa";
   const studentInitial = studentName.charAt(0).toUpperCase();
   const todayLabel = new Date().toLocaleDateString("id-ID", {
@@ -131,40 +166,34 @@ export default function HomeScreen() {
     year: "numeric",
   });
 
+  const weeklyExpense = useMemo(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMonday = day === 0 ? 6 : day - 1;
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday);
+    monday.setHours(0, 0, 0, 0);
+    const nextMonday = new Date(monday);
+    nextMonday.setDate(nextMonday.getDate() + 7);
+
+    return transactions
+      .filter((tx) => {
+        if (tx.type !== "expense") return false;
+        const d = new Date(tx.date);
+        return d >= monday && d < nextMonday;
+      })
+      .reduce((sum, tx) => sum + tx.amount, 0);
+  }, [transactions]);
+
+  const weeklyUsagePct = weeklyExpenseLimit > 0 ? Math.min(100, Math.round((weeklyExpense / weeklyExpenseLimit) * 100)) : 0;
+  const weeklyRemaining = Math.max(0, weeklyExpenseLimit - weeklyExpense);
+  const weeklyExceeded = Math.max(0, weeklyExpense - weeklyExpenseLimit);
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
     >
-      {[...highWarnings, ...mediumWarnings].slice(0, 2).map((w) => {
-        const bg = w.severity === "high" ? "#FEE2E2" : "#FFF4D6";
-        const border = w.severity === "high" ? "#FF6B6B" : "#FFB347";
-        const text = w.severity === "high" ? "#991B1B" : "#9A5A00";
-        return (
-          <View
-            key={w.id}
-            style={{
-              marginBottom: 12,
-              borderRadius: 16,
-              padding: 14,
-              backgroundColor: bg,
-              borderColor: border,
-              borderWidth: 1,
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-              <Text style={{ flex: 1, marginRight: 12, color: text, fontWeight: "700" }}>
-                {w.message}
-              </Text>
-              <Pressable onPress={() => setDismissedWarningIds((prev) => [...prev, w.id])}>
-                <Ionicons name="close" size={18} color={text} />
-              </Pressable>
-            </View>
-          </View>
-        );
-      })}
-
       <View style={{ marginBottom: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <View>
           <Text style={{ fontSize: 26, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
@@ -186,6 +215,51 @@ export default function HomeScreen() {
           <Text style={{ color: CERDIK_COLORS.primary, fontWeight: "700", fontSize: 18 }}>{studentInitial}</Text>
         </Pressable>
       </View>
+
+      {topWarning ? (
+        <View
+          style={{
+            marginBottom: 12,
+            borderRadius: 16,
+            padding: 14,
+            backgroundColor:
+              topWarning.severity === "high"
+                ? "#FEE2E2"
+                : topWarning.severity === "medium"
+                  ? "#FFF4D6"
+                  : "#DCFCE7",
+            borderColor:
+              topWarning.severity === "high"
+                ? "#FF6B6B"
+                : topWarning.severity === "medium"
+                  ? "#FFB347"
+                  : "#22C55E",
+            borderWidth: 1,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "800" }}>{topWarning.title}</Text>
+              <Text style={{ marginTop: 4, color: CERDIK_COLORS.textSecondary }}>{topWarning.message}</Text>
+              {topWarning.actionLabel && topWarning.actionRoute ? (
+                <Pressable onPress={() => router.push(topWarning.actionRoute as any)} style={{ marginTop: 8 }}>
+                  <Text style={{ color: CERDIK_COLORS.primary, fontWeight: "700" }}>{topWarning.actionLabel}</Text>
+                </Pressable>
+              ) : null}
+              {hiddenWarningCount > 0 ? (
+                <Pressable onPress={() => router.push("/(tabs)/evaluasi" as any)} style={{ marginTop: 8 }}>
+                  <Text style={{ color: CERDIK_COLORS.primary, fontWeight: "700" }}>
+                    + {hiddenWarningCount} peringatan lainnya
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <Pressable onPress={() => dismissWarning(topWarning.id)}>
+              <Ionicons name="close" size={18} color={CERDIK_COLORS.textSecondary} />
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
 
       <LinearGradient
         colors={[CERDIK_COLORS.primary, CERDIK_COLORS.secondary]}
@@ -216,39 +290,55 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
-      {lowWarnings.length > 0 ? (
-        <View style={{ marginBottom: 14 }}>
-          <Text style={{ marginBottom: 8, fontSize: 16, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
-            Perhatian
-          </Text>
-          {lowWarnings.slice(0, 2).map((w) => (
-            <View
-              key={w.id}
-              style={{
-                backgroundColor: "#FFFFFF",
-                borderRadius: 16,
-                padding: 12,
-                borderWidth: 1,
-                borderColor: "#E2E8F0",
-                marginBottom: 8,
-              }}
-            >
-              <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-                <Text style={{ flex: 1, color: CERDIK_COLORS.textSecondary }}>
-                  {w.message}
-                </Text>
-                <Pressable onPress={() => setDismissedWarningIds((prev) => [...prev, w.id])}>
-                  <Ionicons name="close" size={16} color={CERDIK_COLORS.textSecondary} />
-                </Pressable>
-              </View>
-            </View>
-          ))}
+      <View
+        style={{
+          backgroundColor: CERDIK_COLORS.card,
+          borderRadius: 16,
+          padding: 14,
+          marginBottom: 14,
+          borderWidth: 1,
+          borderColor: "#E2E8F0",
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "800" }}>Batas Mingguan</Text>
+          <Pressable onPress={() => router.push("/profile")}>
+            <Text style={{ color: CERDIK_COLORS.primary, fontWeight: "700", fontSize: 12 }}>Atur</Text>
+          </Pressable>
         </View>
-      ) : null}
+
+        {weeklyExpenseLimit > 0 ? (
+          <>
+            <Text style={{ marginTop: 8, color: CERDIK_COLORS.textSecondary }}>
+              Minggu ini: {formatRupiah(weeklyExpense)} / {formatRupiah(weeklyExpenseLimit)}
+            </Text>
+            <Text style={{ marginTop: 4, color: weeklyExceeded > 0 ? "#DC2626" : CERDIK_COLORS.textSecondary, fontSize: 12, fontWeight: "600" }}>
+              {weeklyExceeded > 0 ? `Melebihi limit: ${formatRupiah(weeklyExceeded)}` : `Sisa limit: ${formatRupiah(weeklyRemaining)}`}
+            </Text>
+            <View style={{ marginTop: 10, height: 10, borderRadius: 999, backgroundColor: "#E2E8F0" }}>
+              <View
+                style={{
+                  width: `${weeklyUsagePct}%`,
+                  height: 10,
+                  borderRadius: 999,
+                  backgroundColor: weeklyUsagePct >= 100 ? "#DC2626" : weeklyUsagePct >= 80 ? "#F59E0B" : "#16A34A",
+                }}
+              />
+            </View>
+            <Text style={{ marginTop: 6, color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>
+              Terpakai {weeklyUsagePct}% dari batas pengeluaran mingguan.
+            </Text>
+          </>
+        ) : (
+          <Text style={{ marginTop: 8, color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>
+            Batas mingguan belum diatur. Tap "Atur" untuk mengaktifkan pengingat.
+          </Text>
+        )}
+      </View>
 
       <View style={{ marginBottom: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <Text style={{ fontSize: 18, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>Transaksi Terakhir</Text>
-        <Pressable>
+        <Pressable onPress={() => router.push("/transactions" as any)}>
           <Text style={{ color: CERDIK_COLORS.primary, fontWeight: "700" }}>Lihat Semua</Text>
         </Pressable>
       </View>
@@ -340,40 +430,101 @@ export default function HomeScreen() {
         )}
       </View>
 
-      <Text style={{ fontSize: 18, fontWeight: "700", color: CERDIK_COLORS.textPrimary, marginBottom: 10 }}>
-        Progress Goal Aktif
-      </Text>
-      <View
-        style={{
-          backgroundColor: CERDIK_COLORS.card,
-          borderRadius: 16,
-          padding: 14,
-          shadowColor: "#000000",
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.06,
-          shadowRadius: 8,
-          elevation: 2,
-        }}
-      >
-        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "700" }}>
-            {activeGoal.emoji} {activeGoal.name}
-          </Text>
-          <Text style={{ color: CERDIK_COLORS.primary, fontWeight: "700" }}>{goalProgress}%</Text>
+      <View style={{ marginBottom: 12 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>Target Aktif</Text>
+
+          {activeGoals.length > 0 ? (
+            <Pressable onPress={() => router.push("/(tabs)/rencanakan" as any)}>
+              <Text style={{ color: CERDIK_COLORS.primary, fontWeight: "700" }}>Lihat Semua Target</Text>
+            </Pressable>
+          ) : null}
         </View>
-        <Text style={{ marginTop: 6, color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>
-          {formatRupiah(activeGoal.currentAmount)} dari {formatRupiah(activeGoal.targetAmount)}
-        </Text>
-        <View style={{ marginTop: 10, height: 10, borderRadius: 999, backgroundColor: "#E2E8F0" }}>
+
+        {activeGoals.length === 0 ? (
           <View
             style={{
-              width: `${goalProgress}%`,
-              height: 10,
-              borderRadius: 999,
-              backgroundColor: CERDIK_COLORS.primary,
+              backgroundColor: CERDIK_COLORS.card,
+              borderRadius: 16,
+              padding: 16,
+              shadowColor: "#000000",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.06,
+              shadowRadius: 8,
+              elevation: 2,
             }}
-          />
-        </View>
+          >
+            <Text style={{ fontSize: 44, textAlign: "center", marginBottom: 10 }}>🎯</Text>
+            <Text style={{ textAlign: "center", fontWeight: "800", color: CERDIK_COLORS.textPrimary }}>Belum punya target? Buat sekarang!</Text>
+            <Text style={{ marginTop: 6, textAlign: "center", color: CERDIK_COLORS.textSecondary }}>
+              Mulai dari goal kecil dulu, nanti terus berkembang.
+            </Text>
+
+            <View style={{ marginTop: 12 }}>
+              <Pressable
+                onPress={() => router.push("/(tabs)/rencanakan" as any)}
+                style={{
+                  height: 48,
+                  borderRadius: 16,
+                  backgroundColor: CERDIK_COLORS.primary,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ color: "#FFFFFF", fontWeight: "900" }}>Buat Target</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          activeGoals.slice(0, 2).map((goal) => {
+            const pct = goal.targetAmount > 0 ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100)) : 0;
+            const progressInfo = goalService.getGoalProgress(goal);
+            const dailyNeeded = Math.ceil(progressInfo.dailyNeeded);
+
+            return (
+              <View
+                key={goal.id}
+                style={{
+                  backgroundColor: CERDIK_COLORS.card,
+                  borderRadius: 16,
+                  padding: 14,
+                  shadowColor: "#000000",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.06,
+                  shadowRadius: 8,
+                  elevation: 2,
+                  marginBottom: 12,
+                }}
+              >
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "700" }}>
+                    {goal.emoji} {goal.name}
+                  </Text>
+                  <Text style={{ color: CERDIK_COLORS.primary, fontWeight: "700" }}>{pct}%</Text>
+                </View>
+
+                <Text style={{ marginTop: 6, color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>
+                  {formatRupiah(goal.currentAmount)} / {formatRupiah(goal.targetAmount)}
+                </Text>
+
+                <Text style={{ marginTop: 4, color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>
+                  Butuh {formatRupiah(dailyNeeded)}/hari
+                </Text>
+
+                <View style={{ marginTop: 10, height: 10, borderRadius: 999, backgroundColor: "#E2E8F0" }}>
+                  <View
+                    style={{
+                      width: `${pct}%`,
+                      height: 10,
+                      borderRadius: 999,
+                      backgroundColor: CERDIK_COLORS.primary,
+                    }}
+                  />
+                </View>
+              </View>
+            );
+          })
+        )}
       </View>
     </ScrollView>
   );

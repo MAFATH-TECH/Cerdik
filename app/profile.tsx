@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, Switch, Text, TextInput, View } from "react-native";
@@ -6,20 +5,20 @@ import { Alert, Pressable, Switch, Text, TextInput, View } from "react-native";
 import CerdikButton from "@/components/ui/CerdikButton";
 import CerdikCard from "@/components/ui/CerdikCard";
 import { CERDIK_COLORS } from "@/constants/colors";
+import { userSettingsService } from "@/services/userSettingsService";
 import { useAuthStore } from "@/stores/useAuthStore";
-
-const SETTINGS_STORAGE_KEY = "cerdik_settings_v1";
-
-type SettingsState = {
-  dailyNotificationsEnabled: boolean;
-};
+import { useGoalStore } from "@/stores/useGoalStore";
+import { useTransactionStore } from "@/stores/useTransactionStore";
 
 export default function ProfileScreen() {
   const { user, updateProfile, logout, isLoading } = useAuthStore();
+  const resetTransactionState = useTransactionStore((s) => s.resetState);
+  const resetGoalState = useGoalStore((s) => s.resetState);
   const [name, setName] = useState(user?.name ?? "");
   const [kelas, setKelas] = useState(user?.kelas ?? "");
   const [sekolah, setSekolah] = useState(user?.sekolah ?? "");
   const [dailyNotificationsEnabled, setDailyNotificationsEnabled] = useState(true);
+  const [weeklyExpenseLimit, setWeeklyExpenseLimit] = useState("0");
 
   useEffect(() => {
     setName(user?.name ?? "");
@@ -30,10 +29,9 @@ export default function ProfileScreen() {
   useEffect(() => {
     const load = async () => {
       try {
-        const raw = await AsyncStorage.getItem(SETTINGS_STORAGE_KEY);
-        if (!raw) return;
-        const parsed = JSON.parse(raw) as SettingsState;
-        setDailyNotificationsEnabled(Boolean(parsed.dailyNotificationsEnabled));
+        const settings = await userSettingsService.getSettings();
+        setDailyNotificationsEnabled(Boolean(settings.dailyNotificationsEnabled));
+        setWeeklyExpenseLimit(String(settings.weeklyExpenseLimit));
       } catch {
         // ignore
       }
@@ -51,7 +49,17 @@ export default function ProfileScreen() {
       return;
     }
     try {
+      const parsedWeeklyLimit = Math.max(0, Math.round(Number(weeklyExpenseLimit || "0")));
+      if (!Number.isFinite(parsedWeeklyLimit)) {
+        Alert.alert("Input tidak valid", "Batas pengeluaran mingguan harus berupa angka.");
+        return;
+      }
+
       await updateProfile({ name: name.trim(), kelas: kelas.trim(), sekolah: sekolah.trim() });
+      await userSettingsService.saveSettings({
+        dailyNotificationsEnabled,
+        weeklyExpenseLimit: parsedWeeklyLimit,
+      });
       Alert.alert("Tersimpan", "Profil kamu berhasil diperbarui.");
     } catch (error) {
       Alert.alert("Gagal Menyimpan", error instanceof Error ? error.message : "Coba lagi sebentar.");
@@ -60,8 +68,7 @@ export default function ProfileScreen() {
 
   const toggleDailyNotif = async (value: boolean) => {
     setDailyNotificationsEnabled(value);
-    const next: SettingsState = { dailyNotificationsEnabled: value };
-    await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next));
+    await userSettingsService.saveSettings({ dailyNotificationsEnabled: value });
   };
 
   const exportData = () => {
@@ -76,6 +83,8 @@ export default function ProfileScreen() {
         style: "destructive",
         onPress: async () => {
           await logout();
+          resetTransactionState();
+          resetGoalState();
           router.dismissAll();
           router.replace("/(auth)/login");
         },
@@ -183,6 +192,31 @@ export default function ProfileScreen() {
             thumbColor={dailyNotificationsEnabled ? CERDIK_COLORS.primary : "#F1F5F9"}
           />
         </View>
+      </CerdikCard>
+
+      <CerdikCard style={{ marginBottom: 12 }}>
+        <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "800", marginBottom: 6 }}>
+          Batas Pengeluaran Mingguan (Rp)
+        </Text>
+        <TextInput
+          value={weeklyExpenseLimit}
+          onChangeText={(text) => setWeeklyExpenseLimit(text.replace(/[^\d]/g, ""))}
+          placeholder="Contoh: 200000"
+          keyboardType="numeric"
+          placeholderTextColor="#94A3B8"
+          style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: "#E2E8F0",
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            color: CERDIK_COLORS.textPrimary,
+          }}
+        />
+        <Text style={{ marginTop: 6, color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>
+          Isi 0 jika tidak ingin membatasi pengeluaran mingguan.
+        </Text>
       </CerdikCard>
 
       <View style={{ flexDirection: "row", gap: 10, marginBottom: 14 }}>
