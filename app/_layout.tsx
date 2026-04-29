@@ -5,20 +5,26 @@ import { AppState, AppStateStatus, StatusBar } from "react-native";
 import { CERDIK_COLORS } from "../constants/colors";
 import { isSupabaseConfigured, supabase } from "../services/supabase";
 import { useAuthStore } from "../stores/useAuthStore";
+import { useGoalStore } from "../stores/useGoalStore";
+import { useTransactionStore } from "../stores/useTransactionStore";
 
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
 
 export default function RootLayout() {
   const backgroundAtRef = useRef<number | null>(null);
   const { loadStoredAuth, logout, syncSession } = useAuthStore();
+  const resetTransactionState = useTransactionStore((s) => s.resetState);
+  const resetGoalState = useGoalStore((s) => s.resetState);
 
   useEffect(() => {
     loadStoredAuth();
 
     const subscription = isSupabaseConfigured
-      ? supabase.auth.onAuthStateChange((_event, session) => {
-          syncSession(session).catch(() => undefined);
-        }).data.subscription
+      ? supabase.auth
+          .onAuthStateChange((_event, session) => {
+            syncSession(session).catch(() => undefined);
+          })
+          .data.subscription
       : null;
 
     const onAppStateChange = async (state: AppStateStatus) => {
@@ -38,6 +44,8 @@ export default function RootLayout() {
         backgroundAtRef.current = null;
         if (elapsed > SESSION_TIMEOUT_MS) {
           await logout();
+          resetTransactionState();
+          resetGoalState();
           router.dismissAll();
           router.replace("/(auth)/login");
         }
@@ -49,7 +57,7 @@ export default function RootLayout() {
       sub.remove();
       subscription?.unsubscribe();
     };
-  }, [loadStoredAuth, logout, syncSession]);
+  }, [loadStoredAuth, logout, resetGoalState, resetTransactionState, syncSession]);
 
   return (
     <>
@@ -78,6 +86,7 @@ export default function RootLayout() {
         <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="profile" options={{ title: "Pengaturan" }} />
+        <Stack.Screen name="transactions" options={{ title: "Semua Transaksi" }} />
       </Stack>
     </>
   );

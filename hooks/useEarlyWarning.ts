@@ -1,184 +1,167 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { userSettingsService } from "@/services/userSettingsService";
 
-import { Goal } from "@/stores/useGoalStore";
-import { Transaction } from "@/stores/useTransactionStore";
+import { useGoalStore } from "@/stores/useGoalStore";
+import { useTransactionStore } from "@/stores/useTransactionStore";
 
-export type WarningSeverity = "high" | "medium" | "low";
-
-export type EarlyWarning = {
+export interface Warning {
   id: string;
-  type:
-    | "OVERSPENDING_DAILY"
-    | "BUDGET_80_PERCENT"
-    | "CATEGORY_SPIKE"
-    | "NO_SAVING"
-    | "IMPULSE_PATTERN"
-    | "GOAL_AT_RISK";
+  type: string;
+  title: string;
   message: string;
-  severity: WarningSeverity;
-  createdAt: string;
-};
+  severity: "high" | "medium" | "low";
+  actionLabel?: string;
+  actionRoute?: string;
+}
 
-const formatRupiah = (value: number) => `Rp ${new Intl.NumberFormat("id-ID").format(Math.round(value))}`;
+export function useEarlyWarning(): Warning[] {
+  const { transactions, summary } = useTransactionStore();
+  const { goals } = useGoalStore();
+  const [weeklyExpenseLimit, setWeeklyExpenseLimit] = useState(0);
 
-const startOfDay = (date: Date) => {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-};
+  useEffect(() => {
+    userSettingsService
+      .getSettings()
+      .then((settings) => setWeeklyExpenseLimit(settings.weeklyExpenseLimit))
+      .catch(() => setWeeklyExpenseLimit(0));
+  }, []);
 
-const daysAgo = (now: Date, days: number) => {
-  const d = new Date(now);
-  d.setDate(now.getDate() - days);
-  return d;
-};
+  return useMemo(() => {
+    const warnings: Warning[] = [];
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
 
-const sameDay = (a: Date, b: Date) => a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
+    const thisMonthExpenses = transactions.filter((tx) => {
+      const d = new Date(tx.date);
+      return tx.type === "expense" && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
 
-const getTxDate = (tx: Partial<Transaction>) => tx.date ?? tx.createdAt ?? new Date().toISOString();
+    const totalExpense = summary?.totalExpense ?? 0;
+    const totalIncome = summary?.totalIncome ?? 0;
 
-export function useEarlyWarning(params: {
-  transactions: Transaction[];
-  goals: Goal[];
-  now?: Date;
-}) {
-  const { transactions, goals, now = new Date() } = params;
-
-  return useMemo<EarlyWarning[]>(() => {
-    const warnings: EarlyWarning[] = [];
-
-    const monthKey = now.toISOString().slice(0, 7);
-    const monthTransactions = transactions.filter((tx) => getTxDate(tx).slice(0, 7) === monthKey);
-    const monthExpenses = monthTransactions.filter((tx) => tx.type === "expense");
-    const monthIncomes = monthTransactions.filter((tx) => tx.type === "income");
-
-    const totalExpenseMonth = monthExpenses.reduce((sum, tx) => sum + tx.amount, 0);
-    const totalIncomeMonth = monthIncomes.reduce((sum, tx) => sum + tx.amount, 0);
-    const netMonth = totalIncomeMonth - totalExpenseMonth;
-
-    // 1) OVERSPENDING_DAILY
-    const today = startOfDay(now);
-    const todayExpense = monthExpenses
-      .filter((tx) => sameDay(new Date(getTxDate(tx)), today))
-      .reduce((sum, tx) => sum + tx.amount, 0);
-
-    const uniqueExpenseDays = new Set(
-      monthExpenses.map((tx) => new Date(getTxDate(tx)).toISOString().slice(0, 10)),
-    );
-    const avgDailyExpense = uniqueExpenseDays.size > 0 ? totalExpenseMonth / uniqueExpenseDays.size : 0;
-
-    if (avgDailyExpense > 0 && todayExpense > 2 * avgDailyExpense) {
+    // RULE 1: Pengeluaran sudah >80% pemasukan
+    if (totalIncome > 0 && totalExpense / totalIncome > 0.8) {
+      const sisa = totalIncome - totalExpense;
       warnings.push({
-        id: `OVERSPENDING_DAILY-${today.toISOString().slice(0, 10)}`,
-        type: "OVERSPENDING_DAILY",
-        message: `Pengeluaranmu hari ini ${formatRupiah(todayExpense)}, lebih dari 2x rata-rata harianmu!`,
-        severity: "high",
-        createdAt: new Date().toISOString(),
-      });
-    }
-
-    // 2) BUDGET_80_PERCENT
-    if (totalIncomeMonth > 0 && totalExpenseMonth > 0.8 * totalIncomeMonth) {
-      const remaining = Math.max(0, totalIncomeMonth - totalExpenseMonth);
-      warnings.push({
-        id: `BUDGET_80_PERCENT-${monthKey}`,
+        id: "budget_80",
         type: "BUDGET_80_PERCENT",
-        message: `Kamu sudah memakai 80% uang sakumu. Sisa ${formatRupiah(remaining)} sampai akhir bulan.`,
+        title: "Hampir Habis!",
+        message: `Kamu sudah pakai ${Math.round((totalExpense / totalIncome) * 100)}% uang sakumu. Sisa Rp ${sisa.toLocaleString("id-ID")} sampai akhir bulan.`,
         severity: "high",
-        createdAt: new Date().toISOString(),
+        actionLabel: "Lihat Evaluasi",
+        actionRoute: "/(tabs)/evaluasi",
       });
     }
 
-    // 3) CATEGORY_SPIKE (week: last 7 days)
-    const weekStart = startOfDay(daysAgo(now, 6));
-    const weekExpenses = transactions
-      .filter((tx) => tx.type === "expense")
-      .filter((tx) => new Date(getTxDate(tx)) >= weekStart);
-
-    const totalWeekExpense = weekExpenses.reduce((sum, tx) => sum + tx.amount, 0);
-    if (totalWeekExpense > 0) {
-      const byCategory = new Map<string, number>();
-      weekExpenses.forEach((tx) => {
-        byCategory.set(tx.category, (byCategory.get(tx.category) ?? 0) + tx.amount);
+    // RULE 2: Pengeluaran hari ini >2x rata-rata harian
+    const todayExpenses = thisMonthExpenses.filter((tx) => tx.date === todayStr);
+    const todayTotal = todayExpenses.reduce((s, tx) => s + tx.amount, 0);
+    const avgDaily = totalExpense / Math.max(1, today.getDate());
+    if (todayTotal > avgDaily * 2 && todayTotal > 5000) {
+      warnings.push({
+        id: "overspend_today",
+        type: "OVERSPENDING_DAILY",
+        title: "Pengeluaran Hari Ini Tinggi",
+        message: `Hari ini kamu sudah keluar Rp ${todayTotal.toLocaleString("id-ID")}, lebih dari 2x rata-rata harianmu.`,
+        severity: "high",
       });
-      const top = [...byCategory.entries()].sort((a, b) => b[1] - a[1])[0];
-      if (top) {
-        const percentage = (top[1] / totalWeekExpense) * 100;
-        if (percentage > 50) {
+    }
+
+    // RULE 3: Jajan & Hiburan >40% total pengeluaran
+    const jajanTotal = thisMonthExpenses
+      .filter((tx) => ["Jajan", "Hiburan"].includes(tx.category))
+      .reduce((s, tx) => s + tx.amount, 0);
+    if (totalExpense > 0 && jajanTotal / totalExpense > 0.4) {
+      warnings.push({
+        id: "jajan_spike",
+        type: "CATEGORY_SPIKE",
+        title: "Banyak Jajan Nih",
+        message: `${Math.round((jajanTotal / totalExpense) * 100)}% pengeluaranmu untuk jajan & hiburan. Coba dikurangi!`,
+        severity: "medium",
+      });
+    }
+
+    // RULE 4: Jajan 3x+ dalam satu hari
+    const todayJajan = todayExpenses.filter((tx) => ["Jajan", "Hiburan"].includes(tx.category));
+    if (todayJajan.length >= 3) {
+      warnings.push({
+        id: "impulse",
+        type: "IMPULSE_PATTERN",
+        title: "Sering Jajan Hari Ini",
+        message: `Kamu sudah ${todayJajan.length}x jajan/hiburan hari ini. Pikir dua kali sebelum beli lagi!`,
+        severity: "low",
+      });
+    }
+
+    // RULE 5: Goal terancam tidak tercapai
+    goals
+      .filter((g) => !g.isCompleted)
+      .forEach((goal) => {
+        const deadline = new Date(goal.deadline);
+        const daysLeft = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        const progress = goal.targetAmount > 0 ? goal.currentAmount / goal.targetAmount : 0;
+        if (daysLeft <= 30 && daysLeft > 0 && progress < 0.5) {
+          const needed = goal.targetAmount - goal.currentAmount;
+          const perDay = Math.ceil(needed / daysLeft);
           warnings.push({
-            id: `CATEGORY_SPIKE-${weekStart.toISOString().slice(0, 10)}-${top[0]}`,
-            type: "CATEGORY_SPIKE",
-            message: `Pengeluaran ${top[0]} kamu sangat tinggi minggu ini (${percentage.toFixed(0)}% dari total).`,
-            severity: "medium",
-            createdAt: new Date().toISOString(),
+            id: `goal_risk_${goal.id}`,
+            type: "GOAL_AT_RISK",
+            title: `Target "${goal.name}" Terancam`,
+            message: `Deadline ${daysLeft} hari lagi, baru ${Math.round(progress * 100)}% tercapai. Butuh Rp ${perDay.toLocaleString("id-ID")}/hari.`,
+            severity: "high",
+            actionLabel: "Lihat Target",
+            actionRoute: "/(tabs)/rencanakan",
           });
         }
-      }
-    }
-
-    // 4) NO_SAVING
-    const savingWindowStart = startOfDay(daysAgo(now, 6));
-    const savingLike = transactions.filter((tx) => {
-      const category = (tx.category ?? "").toLowerCase();
-      const inWindow = new Date(getTxDate(tx)) >= savingWindowStart;
-      return inWindow && (category === "tabungan" || category.includes("tabung"));
-    });
-    if (savingLike.length === 0) {
-      warnings.push({
-        id: `NO_SAVING-${savingWindowStart.toISOString().slice(0, 10)}`,
-        type: "NO_SAVING",
-        message: "Kamu belum menabung 7 hari terakhir. Yuk mulai dari Rp 5.000!",
-        severity: "medium",
-        createdAt: new Date().toISOString(),
       });
-    }
 
-    // 5) IMPULSE_PATTERN
-    const todayImpulseCount = transactions.filter((tx) => {
-      const category = (tx.category ?? "").toLowerCase();
-      if (!sameDay(new Date(getTxDate(tx)), today)) return false;
-      return category === "jajan" || category === "hiburan";
-    }).length;
+    // RULE 6: Pengeluaran minggu ini mendekati/melewati batas mingguan
+    if (weeklyExpenseLimit > 0) {
+      const now = new Date();
+      const day = now.getDay(); // Min=0, Sen=1, ...
+      const diffToMonday = day === 0 ? 6 : day - 1;
+      const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday);
+      monday.setHours(0, 0, 0, 0);
+      const nextMonday = new Date(monday);
+      nextMonday.setDate(nextMonday.getDate() + 7);
 
-    if (todayImpulseCount >= 3) {
-      warnings.push({
-        id: `IMPULSE_PATTERN-${today.toISOString().slice(0, 10)}`,
-        type: "IMPULSE_PATTERN",
-        message: "Kamu jajan/hiburan 3x hari ini. Coba pikir dua kali sebelum beli!",
-        severity: "low",
-        createdAt: new Date().toISOString(),
-      });
-    }
+      const weeklyExpense = transactions
+        .filter((tx) => {
+          if (tx.type !== "expense") return false;
+          const d = new Date(tx.date);
+          return d >= monday && d < nextMonday;
+        })
+        .reduce((sum, tx) => sum + tx.amount, 0);
 
-    // 6) GOAL_AT_RISK
-    const activeGoals = goals.filter((g) => !g.isCompleted);
-    activeGoals.forEach((goal) => {
-      const deadline = new Date(goal.deadline);
-      const daysLeft = Math.ceil((startOfDay(deadline).getTime() - startOfDay(now).getTime()) / (1000 * 60 * 60 * 24));
-      if (daysLeft <= 0) return;
-
-      const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
-      if (daysLeft < 30 && progress < 50) {
-        const remaining = Math.max(0, goal.targetAmount - goal.currentAmount);
-        const perDay = Math.ceil(remaining / daysLeft);
+      const usagePct = (weeklyExpense / weeklyExpenseLimit) * 100;
+      if (usagePct >= 100) {
         warnings.push({
-          id: `GOAL_AT_RISK-${goal.id}`,
-          type: "GOAL_AT_RISK",
-          message: `Target '${goal.name}' terancam tidak tercapai. Butuh ${formatRupiah(perDay)}/hari untuk mengejar.`,
+          id: "weekly_limit_exceeded",
+          type: "WEEKLY_LIMIT_EXCEEDED",
+          title: "Batas Mingguan Terlewati",
+          message: `Pengeluaran minggu ini Rp ${weeklyExpense.toLocaleString("id-ID")} dari batas Rp ${weeklyExpenseLimit.toLocaleString("id-ID")}.`,
           severity: "high",
-          createdAt: new Date().toISOString(),
+          actionLabel: "Lihat Evaluasi",
+          actionRoute: "/(tabs)/evaluasi",
+        });
+      } else if (usagePct >= 80) {
+        warnings.push({
+          id: "weekly_limit_near",
+          type: "WEEKLY_LIMIT_NEAR",
+          title: "Batas Mingguan Hampir Habis",
+          message: `Pengeluaran minggu ini sudah ${Math.round(usagePct)}% dari batas mingguanmu.`,
+          severity: "medium",
+          actionLabel: "Cek Pengeluaran",
+          actionRoute: "/(tabs)/evaluasi",
         });
       }
-    });
+    }
 
-    // Sort by severity: high -> medium -> low
-    const severityRank: Record<WarningSeverity, number> = { high: 0, medium: 1, low: 2 };
-    warnings.sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
-
-    // Avoid duplicates
-    const map = new Map<string, EarlyWarning>();
-    warnings.forEach((w) => map.set(w.id, w));
-    return [...map.values()];
-  }, [transactions, goals, now]);
+    // Urutkan: high → medium → low
+    const order: Record<Warning["severity"], number> = { high: 0, medium: 1, low: 2 };
+    return warnings.sort((a, b) => order[a.severity] - order[b.severity]);
+  }, [goals, summary, transactions, weeklyExpenseLimit]);
 }
 
