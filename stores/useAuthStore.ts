@@ -2,7 +2,7 @@ import { Session } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 
-import { getAuthCallbackUrl, supabase } from "@/services/supabase";
+import { ensureSupabaseConfigured, getAuthCallbackUrl, isSupabaseConfigured, supabase } from "@/services/supabase";
 
 type AuthUser = {
   id: string;
@@ -64,6 +64,7 @@ const normalizePhone = (value: string) => {
 };
 
 const getProfileByUserId = async (userId: string) => {
+  ensureSupabaseConfigured();
   const { data, error } = await supabase
     .from("profiles")
     .select("id, email, name, kelas, sekolah, phone")
@@ -82,6 +83,11 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   loadStoredAuth: async () => {
     try {
+      if (!isSupabaseConfigured) {
+        set({ user: null, session: null, isHydrated: true, isLoading: false });
+        return;
+      }
+
       const rememberMe = await AsyncStorage.getItem(REMEMBER_ME_KEY);
       if (rememberMe === "false") {
         await supabase.auth.signOut();
@@ -106,6 +112,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   syncSession: async (session) => {
+    if (!isSupabaseConfigured) {
+      set({ user: null, session: null, isHydrated: true, isLoading: false });
+      return;
+    }
+
     if (!session?.user) {
       set({ user: null, session: null, isHydrated: true, isLoading: false });
       return;
@@ -123,6 +134,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true });
 
     try {
+      ensureSupabaseConfigured();
       await AsyncStorage.setItem(REMEMBER_ME_KEY, rememberMe ? "true" : "false");
       const { data, error } = await supabase.auth.signInWithPassword({
         email: sanitizeText(email).toLowerCase(),
@@ -151,6 +163,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true });
 
     try {
+      ensureSupabaseConfigured();
       const normalizedEmail = sanitizeText(email).toLowerCase();
       const normalizedPhone = normalizePhone(phone);
 
@@ -194,6 +207,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true });
 
     try {
+      ensureSupabaseConfigured();
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -222,7 +236,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-    await supabase.auth.signOut();
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut();
+    }
     set({ user: null, session: null, isLoading: false, isHydrated: true });
   },
 }));

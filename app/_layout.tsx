@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { AppState, AppStateStatus, StatusBar } from "react-native";
 
 import { CERDIK_COLORS } from "../constants/colors";
-import { supabase } from "../services/supabase";
+import { isSupabaseConfigured, supabase } from "../services/supabase";
 import { useAuthStore } from "../stores/useAuthStore";
 
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
@@ -15,13 +15,15 @@ export default function RootLayout() {
   useEffect(() => {
     loadStoredAuth();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      syncSession(session).catch(() => undefined);
-    });
+    const subscription = isSupabaseConfigured
+      ? supabase.auth.onAuthStateChange((_event, session) => {
+          syncSession(session).catch(() => undefined);
+        }).data.subscription
+      : null;
 
     const onAppStateChange = async (state: AppStateStatus) => {
+      if (!isSupabaseConfigured) return;
+
       if (state === "background" || state === "inactive") {
         backgroundAtRef.current = Date.now();
         await supabase.auth.stopAutoRefresh();
@@ -45,7 +47,7 @@ export default function RootLayout() {
     const sub = AppState.addEventListener("change", onAppStateChange);
     return () => {
       sub.remove();
-      subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
   }, [loadStoredAuth, logout, syncSession]);
 

@@ -6,12 +6,21 @@ import { createClient, processLock } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_CONFIG_ERROR =
+  "Konfigurasi Supabase belum diisi. Tambahkan EXPO_PUBLIC_SUPABASE_URL dan EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY di .env lalu restart Expo.";
 
-if (!supabaseUrl || !supabasePublishableKey) {
-  throw new Error("Supabase environment variables are missing.");
-}
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey);
 
-export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
+export const ensureSupabaseConfigured = () => {
+  if (!isSupabaseConfigured) {
+    throw new Error(SUPABASE_CONFIG_ERROR);
+  }
+};
+
+export const supabase = createClient(
+  supabaseUrl ?? "https://placeholder.supabase.co",
+  supabasePublishableKey ?? "placeholder-anon-key",
+  {
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,
@@ -24,6 +33,7 @@ export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
 export const getAuthCallbackUrl = () => Linking.createURL("/auth/callback");
 
 export const restoreSessionFromUrl = async (url: string) => {
+  ensureSupabaseConfigured();
   const normalizedUrl = url.replace("#", "?");
   const parsedUrl = new URL(normalizedUrl);
 
