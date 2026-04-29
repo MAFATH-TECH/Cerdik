@@ -17,6 +17,7 @@ import CurrencyInput from "@/components/ui/CurrencyInput";
 import { ScreenError, ScreenLoading } from "@/components/ui/ScreenState";
 import { CERDIK_COLORS } from "../../constants/colors";
 import { Goal, useGoalStore } from "../../stores/useGoalStore";
+import { goalService } from "@/services/goalService";
 
 const GOAL_EMOJIS = ["🎮", "📱", "👟", "🎒", "📚", "🎵", "✈️", "💻", "🏸", "🎁"];
 
@@ -59,7 +60,7 @@ function AnimatedGoalProgress({ percentage }: { percentage: number }) {
 }
 
 export default function RencanakanScreen() {
-  const { goals, loadGoals, addGoal, addSaving, isLoading, error } = useGoalStore();
+  const { goals, loadGoals, createGoal, addContribution, isLoading, error } = useGoalStore();
   const [goalModalVisible, setGoalModalVisible] = useState(false);
   const [savingModalGoal, setSavingModalGoal] = useState<Goal | null>(null);
   const [name, setName] = useState("");
@@ -98,12 +99,12 @@ export default function RencanakanScreen() {
       Alert.alert("Data belum lengkap", "Nama goal dan target nominal wajib diisi.");
       return;
     }
-    await addGoal({
+    await createGoal({
       name: name.trim(),
       emoji,
-      targetAmount,
+      target_amount: targetAmount,
       deadline: deadline.toISOString(),
-      note: note.trim(),
+      note: note.trim() || undefined,
     });
     resetGoalForm();
     setGoalModalVisible(false);
@@ -115,19 +116,15 @@ export default function RencanakanScreen() {
       Alert.alert("Nominal kosong", "Masukkan nominal tabungan terlebih dahulu.");
       return;
     }
-    await addSaving(savingModalGoal.id, amount);
+    await addContribution(savingModalGoal.id, amount);
     setSavingAmount("");
     setSavingModalGoal(null);
   };
 
   const renderGoalCard = (goal: Goal) => {
     const percentage = Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100));
-    const remaining = Math.max(0, goal.targetAmount - goal.currentAmount);
-    const diffDays = Math.max(
-      1,
-      Math.ceil((new Date(goal.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)),
-    );
-    const dailySave = Math.ceil(remaining / diffDays);
+    const { daysLeft, dailyNeeded } = goalService.getGoalProgress(goal);
+    const dailySave = Math.ceil(dailyNeeded);
 
     return (
       <CerdikCard key={goal.id} style={{ marginBottom: 12 }}>
@@ -150,7 +147,7 @@ export default function RencanakanScreen() {
         <AnimatedGoalProgress percentage={percentage} />
 
         <Text style={{ marginTop: 8, color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>
-          ~{diffDays} hari lagi jika menabung {formatRupiah(dailySave)}/hari
+          Butuh menabung {formatRupiah(dailySave)}/hari
         </Text>
 
         <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>

@@ -2,7 +2,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, Text, TextInput, ToastAndroid, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, TextInput, ToastAndroid, View } from "react-native";
 
 import CurrencyInput from "@/components/ui/CurrencyInput";
 import { CERDIK_COLORS } from "../../constants/colors";
@@ -53,28 +53,37 @@ export default function CatatScreen() {
   const showSuccessToast = () => {
     if (Platform.OS === "android") {
       ToastAndroid.show("Transaksi berhasil dicatat!", ToastAndroid.SHORT);
+      return;
     }
+    Alert.alert("Berhasil", "Transaksi berhasil dicatat!");
   };
 
   const handleSave = async () => {
     const parsedAmount = Number(amount);
-    if (!parsedAmount || !selectedCategory) return;
+    if (!(parsedAmount > 0) || !selectedCategory.trim()) return;
+    if (isLoading) return;
 
-    await addTransaction({
-      type,
-      amount: parsedAmount,
-      category: selectedCategory,
-      note,
-      date: selectedDate.toISOString(),
-    });
+    try {
+      await addTransaction({
+        type,
+        amount: parsedAmount,
+        category: selectedCategory,
+        note,
+        date: selectedDate.toISOString(),
+      });
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-    showSuccessToast();
-    setAmount("");
-    setSelectedCategory("");
-    setNote("");
-    setSelectedDate(new Date());
-    router.replace("/(tabs)");
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+      showSuccessToast();
+      setType("expense");
+      setAmount("");
+      setSelectedCategory("");
+      setNote("");
+      setSelectedDate(new Date());
+      setShowDatePicker(false);
+      router.replace("/(tabs)");
+    } catch {
+      Alert.alert("Gagal menyimpan transaksi. Coba lagi.");
+    }
   };
 
   return (
@@ -90,11 +99,13 @@ export default function CatatScreen() {
       >
         <Pressable
           onPress={() => setType("income")}
+          disabled={isLoading}
           style={{
             flex: 1,
             borderRadius: 999,
             paddingVertical: 10,
             backgroundColor: type === "income" ? CERDIK_COLORS.secondary : "transparent",
+            opacity: isLoading ? 0.6 : 1,
           }}
         >
           <Text style={{ textAlign: "center", fontWeight: "700", color: type === "income" ? "#FFFFFF" : CERDIK_COLORS.textSecondary }}>
@@ -103,11 +114,13 @@ export default function CatatScreen() {
         </Pressable>
         <Pressable
           onPress={() => setType("expense")}
+          disabled={isLoading}
           style={{
             flex: 1,
             borderRadius: 999,
             paddingVertical: 10,
             backgroundColor: type === "expense" ? CERDIK_COLORS.accent : "transparent",
+            opacity: isLoading ? 0.6 : 1,
           }}
         >
           <Text style={{ textAlign: "center", fontWeight: "700", color: type === "expense" ? "#FFFFFF" : CERDIK_COLORS.textSecondary }}>
@@ -120,7 +133,7 @@ export default function CatatScreen() {
         <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: CERDIK_COLORS.textSecondary }}>
           Nominal Transaksi
         </Text>
-        <CurrencyInput label="" value={amount} onChange={setAmount} />
+        <CurrencyInput label="" value={amount} onChange={setAmount} disabled={isLoading} />
         <Text style={{ textAlign: "center", marginTop: -10, fontSize: 32, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
           {amount ? `Rp ${Number(amount).toLocaleString("id-ID")}` : "Rp 0"}
         </Text>
@@ -136,10 +149,12 @@ export default function CatatScreen() {
             <Pressable
               key={category.label}
               onPress={() => setSelectedCategory(category.label)}
+              disabled={isLoading}
               style={{
                 width: "25%",
                 alignItems: "center",
                 marginBottom: 14,
+                opacity: isLoading ? 0.6 : 1,
               }}
             >
               <View
@@ -180,6 +195,7 @@ export default function CatatScreen() {
         onChangeText={(text) => setNote(text.slice(0, 100))}
         placeholder="Tambah catatan... (opsional)"
         multiline
+        editable={!isLoading}
         style={{
           minHeight: 90,
           backgroundColor: "#FFFFFF",
@@ -190,6 +206,7 @@ export default function CatatScreen() {
           paddingVertical: 10,
           textAlignVertical: "top",
           marginBottom: 16,
+          opacity: isLoading ? 0.6 : 1,
         }}
       />
       <Text style={{ marginTop: -12, marginBottom: 12, textAlign: "right", color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>
@@ -201,6 +218,7 @@ export default function CatatScreen() {
       </Text>
       <Pressable
         onPress={() => setShowDatePicker(true)}
+        disabled={isLoading}
         style={{
           marginBottom: 20,
           borderRadius: 16,
@@ -212,6 +230,7 @@ export default function CatatScreen() {
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
+          opacity: isLoading ? 0.6 : 1,
         }}
       >
         <Text style={{ color: CERDIK_COLORS.textPrimary }}>
@@ -220,7 +239,7 @@ export default function CatatScreen() {
         <Text style={{ fontSize: 18 }}>📅</Text>
       </Pressable>
 
-      {showDatePicker ? (
+      {showDatePicker && !isLoading ? (
         <DateTimePicker
           value={selectedDate}
           mode="date"
@@ -245,9 +264,14 @@ export default function CatatScreen() {
           opacity: isLoading || !amount || !selectedCategory ? 0.6 : 1,
         }}
       >
-        <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "700" }}>
-          {isLoading ? "Menyimpan..." : saveButtonLabel}
-        </Text>
+        {isLoading ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <ActivityIndicator size="small" color="#FFFFFF" />
+            <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "700" }}>Menyimpan...</Text>
+          </View>
+        ) : (
+          <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "700" }}>{saveButtonLabel}</Text>
+        )}
       </Pressable>
     </ScrollView>
   );

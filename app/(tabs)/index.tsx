@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 
 import SummaryCard from "@/components/ui/SummaryCard";
@@ -11,6 +11,7 @@ import { CERDIK_COLORS } from "../../constants/colors";
 import { useAuthStore } from "../../stores/useAuthStore";
 import { Goal, useGoalStore } from "../../stores/useGoalStore";
 import { Transaction, useTransactionStore } from "../../stores/useTransactionStore";
+import { transactionService } from "@/services/transactionService";
 
 const rupiahFormatter = new Intl.NumberFormat("id-ID");
 
@@ -33,54 +34,6 @@ const mapCategoryIcon = (category: string): keyof typeof Ionicons.glyphMap => {
   return "ellipsis-horizontal-circle-outline";
 };
 
-const MOCK_TRANSACTIONS: Transaction[] = [
-  {
-    id: "t1",
-    type: "income",
-    amount: 350000,
-    category: "Uang Saku",
-    note: "Uang saku mingguan",
-    date: "2026-04-20T09:00:00.000Z",
-    createdAt: "2026-04-20T09:00:00.000Z",
-  },
-  {
-    id: "t2",
-    type: "expense",
-    amount: 25000,
-    category: "Makan",
-    note: "Makan siang kantin",
-    date: "2026-04-21T05:00:00.000Z",
-    createdAt: "2026-04-21T05:00:00.000Z",
-  },
-  {
-    id: "t3",
-    type: "expense",
-    amount: 70000,
-    category: "Tabungan",
-    note: "Tabungan mingguan",
-    date: "2026-04-21T07:00:00.000Z",
-    createdAt: "2026-04-21T07:00:00.000Z",
-  },
-  {
-    id: "t4",
-    type: "expense",
-    amount: 30000,
-    category: "Transportasi",
-    note: "Topup transport",
-    date: "2026-04-22T02:30:00.000Z",
-    createdAt: "2026-04-22T02:30:00.000Z",
-  },
-  {
-    id: "t5",
-    type: "income",
-    amount: 100000,
-    category: "Hadiah",
-    note: "Reward lomba",
-    date: "2026-04-22T04:20:00.000Z",
-    createdAt: "2026-04-22T04:20:00.000Z",
-  },
-];
-
 const MOCK_GOAL: Goal = {
   id: "g1",
   name: "Laptop Belajar",
@@ -96,22 +49,55 @@ const MOCK_GOAL: Goal = {
 export default function HomeScreen() {
   const [showBalance, setShowBalance] = useState(true);
   const [dismissedWarningIds, setDismissedWarningIds] = useState<string[]>([]);
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
+  const [recentLoading, setRecentLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const { user } = useAuthStore();
-  const { transactions, loadTransactions, isLoading: txLoading } = useTransactionStore();
+  const { transactions, loadTransactions, loadSummary, isLoading: txLoading, summary } = useTransactionStore();
   const { goals, loadGoals } = useGoalStore();
 
-  useEffect(() => {
-    loadTransactions();
-    loadGoals();
-  }, [loadTransactions, loadGoals]);
-
-  const finalTransactions = transactions.length > 0 ? transactions : MOCK_TRANSACTIONS;
   const activeGoal = goals.find((goal) => !goal.isCompleted) ?? MOCK_GOAL;
-  const warnings = useEarlyWarning({ transactions: finalTransactions, goals });
+  const warnings = useEarlyWarning({ transactions, goals });
   const visibleWarnings = warnings.filter((w) => !dismissedWarningIds.includes(w.id));
   const highWarnings = visibleWarnings.filter((w) => w.severity === "high");
   const mediumWarnings = visibleWarnings.filter((w) => w.severity === "medium");
   const lowWarnings = visibleWarnings.filter((w) => w.severity === "low");
+
+  const loadRecent = useCallback(async () => {
+    setRecentLoading(true);
+    try {
+      const list = await transactionService.getRecentTransactions(5);
+      setRecentTransactions(list);
+    } catch {
+      setRecentTransactions([]);
+    } finally {
+      setRecentLoading(false);
+    }
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadTransactions();
+      await loadSummary();
+      await loadRecent();
+      await loadGoals();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadGoals, loadRecent, loadSummary, loadTransactions]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const run = async () => {
+        await loadTransactions();
+        await loadSummary();
+        await loadGoals();
+        await loadRecent();
+      };
+      run().catch(() => undefined);
+    }, [loadGoals, loadRecent, loadSummary, loadTransactions]),
+  );
 
   useEffect(() => {
     if (highWarnings.length > 0 || mediumWarnings.length > 0) {
@@ -122,25 +108,19 @@ export default function HomeScreen() {
 
   const thisMonthTransactions = useMemo(() => {
     const now = new Date();
-    return finalTransactions.filter((tx) => {
+    return transactions.filter((tx) => {
       const txDate = new Date(tx.createdAt);
       return txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
     });
-  }, [finalTransactions]);
+  }, [transactions]);
 
-  const totalIncome = thisMonthTransactions
-    .filter((tx) => tx.type === "income")
-    .reduce((total, tx) => total + tx.amount, 0);
-  const totalExpense = thisMonthTransactions
-    .filter((tx) => tx.type === "expense")
-    .reduce((total, tx) => total + tx.amount, 0);
+  const totalIncome = summary?.totalIncome ?? 0;
+  const totalExpense = summary?.totalExpense ?? 0;
   const totalSavings = thisMonthTransactions
     .filter((tx) => tx.category === "Tabungan")
     .reduce((total, tx) => total + tx.amount, 0);
-  const netBalance = totalIncome - totalExpense;
-  const latestTransactions = [...finalTransactions]
-    .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
-    .slice(0, 5);
+  const netBalance = summary?.net ?? 0;
+  const latestTransactions = recentTransactions;
   const goalProgress = Math.min(100, Math.round((activeGoal.currentAmount / activeGoal.targetAmount) * 100));
   const studentName = user?.name ?? "Siswa";
   const studentInitial = studentName.charAt(0).toUpperCase();
@@ -152,7 +132,11 @@ export default function HomeScreen() {
   });
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }} contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
+    >
       {[...highWarnings, ...mediumWarnings].slice(0, 2).map((w) => {
         const bg = w.severity === "high" ? "#FEE2E2" : "#FFF4D6";
         const border = w.severity === "high" ? "#FF6B6B" : "#FFB347";
@@ -282,7 +266,7 @@ export default function HomeScreen() {
           elevation: 2,
         }}
       >
-        {txLoading ? (
+        {txLoading || recentLoading || refreshing ? (
           <View style={{ paddingVertical: 8 }}>
             {[0, 1, 2].map((i) => (
               <View
@@ -307,8 +291,9 @@ export default function HomeScreen() {
             </Text>
           </View>
         ) : (
-          latestTransactions.map((tx) => {
+          latestTransactions.map((tx, idx) => {
           const isExpense = tx.type === "expense";
+          const isLast = idx === latestTransactions.length - 1;
           return (
             <View
               key={tx.id}
@@ -317,7 +302,7 @@ export default function HomeScreen() {
                 alignItems: "center",
                 justifyContent: "space-between",
                 paddingVertical: 10,
-                borderBottomWidth: tx.id === latestTransactions[latestTransactions.length - 1].id ? 0 : 1,
+                borderBottomWidth: isLast ? 0 : 1,
                 borderBottomColor: "#EEF2F7",
               }}
             >

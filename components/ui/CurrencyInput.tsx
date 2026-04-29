@@ -5,6 +5,7 @@ type CurrencyInputProps = {
   label: string;
   value: string;
   onChange: (rawValue: string) => void;
+  disabled?: boolean;
 };
 
 const formatRupiah = (rawValue: string) => {
@@ -14,7 +15,7 @@ const formatRupiah = (rawValue: string) => {
   return `Rp ${numberValue.toLocaleString("id-ID")}`;
 };
 
-export default function CurrencyInput({ label, value, onChange }: CurrencyInputProps) {
+export default function CurrencyInput({ label, value, onChange, disabled = false }: CurrencyInputProps) {
   const displayedValue = formatRupiah(value);
 
   return (
@@ -28,6 +29,7 @@ export default function CurrencyInput({ label, value, onChange }: CurrencyInputP
         value={displayedValue}
         onChangeText={(text) => onChange(text.replace(/\D/g, ""))}
         keyboardType="numeric"
+        editable={!disabled}
         style={{
           borderRadius: 16,
           borderWidth: 1,
@@ -37,6 +39,7 @@ export default function CurrencyInput({ label, value, onChange }: CurrencyInputP
           paddingVertical: 12,
           fontSize: 16,
           color: CERDIK_COLORS.textPrimary,
+          opacity: disabled ? 0.6 : 1,
         }}
         placeholder="Rp 0"
         placeholderTextColor="#94A3B8"
