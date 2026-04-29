@@ -1,0 +1,1 @@
+-- Seed placeholder for local Supabase CLI workflows.

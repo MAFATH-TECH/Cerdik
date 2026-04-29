@@ -1,8 +1,8 @@
-import { create } from "zustand";
+import { Session } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { create } from "zustand";
 
-const AUTH_STORAGE_KEY = "cerdik_auth_v1";
-const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
+import { getAuthCallbackUrl, supabase } from "@/services/supabase";
 
 type AuthUser = {
   id: string;
@@ -10,173 +10,219 @@ type AuthUser = {
   email: string;
   kelas: string;
   sekolah: string;
+  phone?: string;
+};
+
+type RegisterPayload = {
+  name: string;
+  phone: string;
+  email: string;
+  password: string;
+  kelas: string;
 };
 
 type AuthState = {
   user: AuthUser | null;
-  token: string | null;
+  session: Session | null;
   isLoading: boolean;
-  login: (payload: { email: string; password: string }) => Promise<void>;
-  register: (payload: {
-    name: string;
-    email: string;
-    password: string;
-    kelas: string;
-    sekolah: string;
-  }) => Promise<void>;
+  isHydrated: boolean;
+  login: (payload: { email: string; password: string; rememberMe: boolean }) => Promise<void>;
+  register: (payload: RegisterPayload) => Promise<void>;
   updateProfile: (payload: { name: string; kelas: string; sekolah: string }) => Promise<void>;
-  touchSession: () => Promise<void>;
-  isSessionValid: () => Promise<boolean>;
   logout: () => Promise<void>;
   loadStoredAuth: () => Promise<void>;
+  syncSession: (session: Session | null) => Promise<void>;
+};
+
+type ProfileRow = {
+  id: string;
+  email: string;
+  name: string;
+  kelas: string;
+  sekolah: string;
+  phone?: string;
+};
+
+const mapProfileToUser = (profile: ProfileRow): AuthUser => ({
+  id: profile.id,
+  email: profile.email,
+  name: profile.name,
+  kelas: profile.kelas,
+  sekolah: profile.sekolah,
+});
+
+const REMEMBER_ME_KEY = "cerdik:remember-me";
+
+const sanitizeText = (value: string) => value.replace(/[<>"'`]/g, "").trim();
+const normalizePhone = (value: string) => {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("62")) return digits;
+  if (digits.startsWith("0")) return `62${digits.slice(1)}`;
+  if (digits.startsWith("8")) return `62${digits}`;
+  return digits;
+};
+
+const getProfileByUserId = async (userId: string) => {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, email, name, kelas, sekolah, phone")
+    .eq("id", userId)
+    .single();
+
+  if (error) throw error;
+  return data as ProfileRow;
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  token: null,
+  session: null,
   isLoading: false,
+  isHydrated: false,
 
   loadStoredAuth: async () => {
-    set({ isLoading: true });
     try {
-      const rawAuth = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
-      if (!rawAuth) {
-        set({ user: null, token: null, isLoading: false });
+      const rememberMe = await AsyncStorage.getItem(REMEMBER_ME_KEY);
+      if (rememberMe === "false") {
+        await supabase.auth.signOut();
+        set({ user: null, session: null, isHydrated: true, isLoading: false });
         return;
       }
 
-      const parsed = JSON.parse(rawAuth) as { user?: AuthUser; token?: string; lastActiveAt?: number };
-      const lastActiveAt = parsed.lastActiveAt ?? 0;
-      const expired = Date.now() - lastActiveAt > SESSION_TIMEOUT_MS;
-      if (!parsed.user || !parsed.token || expired) {
-        await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
-        set({ user: null, token: null, isLoading: false });
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.user) {
+        set({ user: null, session: null, isHydrated: true, isLoading: false });
         return;
       }
 
-      set({ user: parsed.user, token: parsed.token, isLoading: false });
+      const profile = await getProfileByUserId(session.user.id);
+      set({ user: mapProfileToUser(profile), session, isHydrated: true, isLoading: false });
     } catch {
-      set({ user: null, token: null, isLoading: false });
+      set({ user: null, session: null, isHydrated: true, isLoading: false });
     }
   },
 
-  login: async ({ email, password }) => {
-    set({ isLoading: true });
-    await new Promise((resolve) => setTimeout(resolve, 900));
-
-    if (!email || !password) {
-      set({ isLoading: false });
-      throw new Error("Email dan password wajib diisi.");
+  syncSession: async (session) => {
+    if (!session?.user) {
+      set({ user: null, session: null, isHydrated: true, isLoading: false });
+      return;
     }
 
-    if (password.length < 6) {
-      set({ isLoading: false });
-      throw new Error("Password minimal 6 karakter.");
+    try {
+      const profile = await getProfileByUserId(session.user.id);
+      set({ user: mapProfileToUser(profile), session, isHydrated: true, isLoading: false });
+    } catch {
+      set({ user: null, session, isHydrated: true, isLoading: false });
     }
-
-    // Simulasi login demo.
-    if (email.toLowerCase().includes("gagal")) {
-      set({ isLoading: false });
-      throw new Error("Login gagal. Cek kembali akunmu.");
-    }
-
-    const user: AuthUser = {
-      id: `usr-${Date.now()}`,
-      name: "Siswa CERDIK",
-      email,
-      kelas: "XI",
-      sekolah: "MAN 1 Kendari",
-    };
-    const token = `token-${Date.now()}`;
-
-    await AsyncStorage.setItem(
-      AUTH_STORAGE_KEY,
-      JSON.stringify({ user, token, lastActiveAt: Date.now() }),
-    );
-    set({ user, token, isLoading: false });
   },
 
-  register: async ({ name, email, password, kelas, sekolah }) => {
+  login: async ({ email, password, rememberMe }) => {
     set({ isLoading: true });
-    await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    if (!name || !email || !password || !kelas || !sekolah) {
+    try {
+      await AsyncStorage.setItem(REMEMBER_ME_KEY, rememberMe ? "true" : "false");
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: sanitizeText(email).toLowerCase(),
+        password,
+      });
+
+      if (error) throw error;
+      if (!data.session || !data.user) {
+        throw new Error("Login belum berhasil. Pastikan email kamu sudah diverifikasi.");
+      }
+
+      const profile = await getProfileByUserId(data.user.id);
+      set({
+        user: mapProfileToUser(profile),
+        session: data.session,
+        isLoading: false,
+        isHydrated: true,
+      });
+    } catch (error) {
       set({ isLoading: false });
-      throw new Error("Semua field wajib diisi.");
+      throw error;
     }
+  },
 
-    const user: AuthUser = {
-      id: `usr-${Date.now()}`,
-      name,
-      email,
-      kelas,
-      sekolah,
-    };
-    const token = `token-${Date.now()}`;
+  register: async ({ name, phone, email, password, kelas }) => {
+    set({ isLoading: true });
 
-    await AsyncStorage.setItem(
-      AUTH_STORAGE_KEY,
-      JSON.stringify({ user, token, lastActiveAt: Date.now() }),
-    );
-    set({ user, token, isLoading: false });
+    try {
+      const normalizedEmail = sanitizeText(email).toLowerCase();
+      const normalizedPhone = normalizePhone(phone);
+
+      const { data: availability, error: availabilityError } = await supabase.rpc("check_registration_availability", {
+        p_email: normalizedEmail,
+        p_phone: normalizedPhone,
+      });
+
+      if (availabilityError) throw availabilityError;
+      const availabilityResult = Array.isArray(availability) ? availability[0] : availability;
+      if (availabilityResult?.email_taken) {
+        throw new Error("EMAIL_ALREADY_USED");
+      }
+      if (availabilityResult?.phone_taken) {
+        throw new Error("PHONE_ALREADY_USED");
+      }
+
+      const { error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password,
+        options: {
+          emailRedirectTo: getAuthCallbackUrl(),
+          data: {
+            name: sanitizeText(name),
+            phone: normalizedPhone,
+            kelas: sanitizeText(kelas),
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      set({ isLoading: false });
+    } catch (error) {
+      set({ isLoading: false });
+      throw error;
+    }
   },
 
   updateProfile: async ({ name, kelas, sekolah }) => {
     set({ isLoading: true });
+
     try {
-      const rawAuth = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
-      if (!rawAuth) {
-        set({ isLoading: false });
-        return;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new Error("Sesi login tidak ditemukan. Silakan masuk kembali.");
       }
-      const parsed = JSON.parse(rawAuth) as { user: AuthUser; token: string; lastActiveAt?: number };
-      const updatedUser: AuthUser = { ...parsed.user, name, kelas, sekolah };
-      await AsyncStorage.setItem(
-        AUTH_STORAGE_KEY,
-        JSON.stringify({ user: updatedUser, token: parsed.token, lastActiveAt: Date.now() }),
-      );
-      set({ user: updatedUser, token: parsed.token, isLoading: false });
-    } catch {
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .update({ name, kelas, sekolah })
+        .eq("id", user.id)
+        .select("id, email, name, kelas, sekolah")
+        .single();
+
+      if (error) throw error;
+
+      set({
+        user: mapProfileToUser(data as ProfileRow),
+        isLoading: false,
+      });
+    } catch (error) {
       set({ isLoading: false });
-    }
-  },
-
-  touchSession: async () => {
-    try {
-      const rawAuth = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
-      if (!rawAuth) return;
-      const parsed = JSON.parse(rawAuth) as { user?: AuthUser; token?: string; lastActiveAt?: number };
-      if (!parsed.user || !parsed.token) return;
-      await AsyncStorage.setItem(
-        AUTH_STORAGE_KEY,
-        JSON.stringify({ user: parsed.user, token: parsed.token, lastActiveAt: Date.now() }),
-      );
-    } catch {
-      // ignore session touch failures
-    }
-  },
-
-  isSessionValid: async () => {
-    try {
-      const rawAuth = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
-      if (!rawAuth) return false;
-      const parsed = JSON.parse(rawAuth) as { user?: AuthUser; token?: string; lastActiveAt?: number };
-      const lastActiveAt = parsed.lastActiveAt ?? 0;
-      const valid = Boolean(parsed.user && parsed.token) && Date.now() - lastActiveAt <= SESSION_TIMEOUT_MS;
-      if (!valid) {
-        await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
-        set({ user: null, token: null, isLoading: false });
-      }
-      return valid;
-    } catch {
-      await AsyncStorage.removeItem(AUTH_STORAGE_KEY).catch(() => undefined);
-      set({ user: null, token: null, isLoading: false });
-      return false;
+      throw error;
     }
   },
 
   logout: async () => {
-    await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
-    set({ user: null, token: null, isLoading: false });
+    await supabase.auth.signOut();
+    set({ user: null, session: null, isLoading: false, isHydrated: true });
   },
 }));

@@ -37,3 +37,43 @@ Atau langsung:
 npm run android
 npm run web
 ```
+
+## Supabase Auth Setup
+
+Project ini sekarang sudah terhubung ke flow auth Supabase dari sisi aplikasi. Konfigurasi lokal yang dipakai:
+
+- URL project lewat `.env`
+- publishable key lewat `.env`
+- migration database ada di `supabase/migrations/20260428174000_create_profiles.sql`
+- redirect deep link verifikasi email: `cerdik://auth/callback`
+
+### Yang perlu dijalankan sekali
+
+1. Login Supabase CLI:
+
+```bash
+npx supabase login
+```
+
+2. Link project lokal ke project Supabase:
+
+```bash
+npm run supabase:link
+```
+
+3. Push migration `profiles` ke database Supabase:
+
+```bash
+npm run supabase:push
+```
+
+### Yang perlu diatur di Supabase Dashboard
+
+- `Auth -> URL Configuration`
+- Tambahkan redirect URL:
+
+```text
+cerdik://auth/callback
+```
+
+- Pastikan `Confirm email` aktif jika ingin user wajib verifikasi email sebelum login.

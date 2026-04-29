@@ -10,43 +10,85 @@ import { CERDIK_COLORS } from "@/constants/colors";
 import { useAuthStore } from "@/stores/useAuthStore";
 
 const KELAS_OPTIONS = ["X", "XI", "XII"] as const;
-const SEKOLAH_OPTIONS = ["MAN 1 Kendari", "MAN IC Kendari", "Lainnya"] as const;
+const normalizePhone = (value: string) => {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("62")) return digits;
+  if (digits.startsWith("0")) return `62${digits.slice(1)}`;
+  if (digits.startsWith("8")) return `62${digits}`;
+  return digits;
+};
 
 export default function RegisterScreen() {
   const { register, isLoading } = useAuthStore();
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [kelas, setKelas] = useState("");
-  const [sekolah, setSekolah] = useState("");
-  const [error, setError] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [confirmPasswordError, setConfirmPasswordError] = useState("");
+  const [kelasError, setKelasError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [kelasModalOpen, setKelasModalOpen] = useState(false);
-  const [sekolahModalOpen, setSekolahModalOpen] = useState(false);
 
   const emailValid = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()), [email]);
+  const normalizedPhone = useMemo(() => normalizePhone(phone), [phone]);
+  const phoneValid = useMemo(() => /^628\d{7,11}$/.test(normalizedPhone), [normalizedPhone]);
+  const passwordValid = useMemo(
+    () => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(password),
+    [password],
+  );
+  const confirmPasswordValid = useMemo(() => confirmPassword.length > 0 && password === confirmPassword, [confirmPassword, password]);
+  const canSubmit =
+    name.trim().length >= 3 &&
+    phoneValid &&
+    emailValid &&
+    passwordValid &&
+    confirmPasswordValid &&
+    Boolean(kelas) &&
+    !isLoading;
 
   const validateForm = () => {
-    if (!name.trim() || !email.trim() || !password || !confirmPassword || !kelas || !sekolah) {
-      setError("Semua field wajib diisi.");
-      return false;
+    let isValid = true;
+    setNameError("");
+    setPhoneError("");
+    setEmailError("");
+    setPasswordError("");
+    setConfirmPasswordError("");
+    setKelasError("");
+
+    if (name.trim().length < 3) {
+      setNameError("Nama minimal 3 karakter.");
+      isValid = false;
+    }
+    if (!phoneValid) {
+      setPhoneError("Nomor HP belum valid (contoh: 0812xxxx).");
+      isValid = false;
     }
     if (!emailValid) {
-      setError("Format email belum valid.");
-      return false;
+      setEmailError("Format email belum valid.");
+      isValid = false;
     }
-    if (password.length < 6) {
-      setError("Password minimal 6 karakter.");
-      return false;
+    if (!passwordValid) {
+      setPasswordError("Password min. 8 karakter dan harus ada huruf besar, kecil, angka, simbol.");
+      isValid = false;
     }
-    if (password !== confirmPassword) {
-      setError("Konfirmasi password tidak sama.");
-      return false;
+    if (!confirmPasswordValid) {
+      setConfirmPasswordError("Konfirmasi password tidak sama.");
+      isValid = false;
     }
-    setError("");
-    return true;
+    if (!kelas) {
+      setKelasError("Kelas wajib dipilih.");
+      isValid = false;
+    }
+
+    return isValid;
   };
 
   const handleRegister = async () => {
@@ -54,14 +96,29 @@ export default function RegisterScreen() {
     try {
       await register({
         name: name.trim(),
+        phone: normalizedPhone,
         email: email.trim(),
         password,
         kelas,
-        sekolah,
       });
-      router.replace("/(tabs)");
+      router.replace("/(auth)/verify-email");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Registrasi gagal. Coba lagi.";
+      const rawMessage = err instanceof Error ? err.message : "Registrasi gagal. Coba lagi.";
+      const normalizedError = rawMessage.toLowerCase();
+      const emailAlreadyUsed =
+        rawMessage === "EMAIL_ALREADY_USED" ||
+        normalizedError.includes("already registered") ||
+        normalizedError.includes("already been registered") ||
+        normalizedError.includes("already exists") ||
+        normalizedError.includes("duplicate key");
+      const phoneAlreadyUsed =
+        rawMessage === "PHONE_ALREADY_USED" ||
+        normalizedError.includes("phone") && normalizedError.includes("duplicate");
+      const message = emailAlreadyUsed
+        ? "Email ini sudah terdaftar. Silakan login."
+        : phoneAlreadyUsed
+          ? "Nomor HP ini sudah dipakai akun lain."
+          : rawMessage;
       Alert.alert("Registrasi Gagal", message);
     }
   };
@@ -146,6 +203,9 @@ export default function RegisterScreen() {
         <Text style={{ marginTop: 4, fontSize: 14, color: CERDIK_COLORS.textSecondary }}>
           Mulai kebiasaan finansial sehat sejak SMA/MAN
         </Text>
+        <Text style={{ marginTop: 8, fontSize: 12, textAlign: "center", color: CERDIK_COLORS.textSecondary }}>
+          Setelah daftar, akun akan aktif setelah kamu verifikasi email.
+        </Text>
       </View>
 
       <CerdikCard>
@@ -153,21 +213,57 @@ export default function RegisterScreen() {
           label="Nama Lengkap"
           placeholder="Nama lengkap"
           value={name}
-          onChangeText={setName}
+          onChangeText={(value) => {
+            setName(value);
+            if (nameError) setNameError("");
+          }}
+          error={nameError}
+          autoComplete="name"
+          textContentType="name"
+          returnKeyType="next"
+        />
+        <CerdikInput
+          label="Nomor HP"
+          placeholder="08xxxxxxxxxx"
+          value={phone}
+          onChangeText={(value) => {
+            setPhone(normalizePhone(value));
+            if (phoneError) setPhoneError("");
+          }}
+          keyboardType="phone-pad"
+          error={phoneError}
+          autoComplete="tel"
+          textContentType="telephoneNumber"
+          returnKeyType="next"
         />
         <CerdikInput
           label="Email"
           placeholder="contoh@email.com"
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(value) => {
+            setEmail(value);
+            if (emailError) setEmailError("");
+          }}
           keyboardType="email-address"
+          error={emailError}
+          autoComplete="email"
+          textContentType="emailAddress"
+          autoCapitalize="none"
+          returnKeyType="next"
         />
         <CerdikInput
           label="Password"
-          placeholder="Minimal 6 karakter"
+          placeholder="Min. 8 karakter + Ab1!"
           value={password}
-          onChangeText={setPassword}
+          onChangeText={(value) => {
+            setPassword(value);
+            if (passwordError) setPasswordError("");
+          }}
           secureTextEntry={!showPassword}
+          error={passwordError}
+          autoComplete="new-password"
+          textContentType="newPassword"
+          returnKeyType="next"
           rightIcon={
             <Ionicons
               name={showPassword ? "eye-off-outline" : "eye-outline"}
@@ -181,8 +277,15 @@ export default function RegisterScreen() {
           label="Konfirmasi Password"
           placeholder="Ulangi password"
           value={confirmPassword}
-          onChangeText={setConfirmPassword}
+          onChangeText={(value) => {
+            setConfirmPassword(value);
+            if (confirmPasswordError) setConfirmPasswordError("");
+          }}
           secureTextEntry={!showConfirmPassword}
+          error={confirmPasswordError}
+          autoComplete="new-password"
+          textContentType="newPassword"
+          returnKeyType="done"
           rightIcon={
             <Ionicons
               name={showConfirmPassword ? "eye-off-outline" : "eye-outline"}
@@ -194,13 +297,9 @@ export default function RegisterScreen() {
         />
 
         {renderSelect("Kelas", kelas, () => setKelasModalOpen(true))}
-        {renderSelect("Asal Sekolah", sekolah, () => setSekolahModalOpen(true))}
+        {kelasError ? <Text style={{ marginTop: -8, marginBottom: 12, fontSize: 12, color: CERDIK_COLORS.accent }}>{kelasError}</Text> : null}
 
-        {error ? (
-          <Text style={{ marginBottom: 12, fontSize: 14, color: CERDIK_COLORS.accent }}>{error}</Text>
-        ) : null}
-
-        <CerdikButton title="Daftar" onPress={handleRegister} loading={isLoading} />
+        <CerdikButton title="Daftar" onPress={handleRegister} loading={isLoading} disabled={!canSubmit} />
       </CerdikCard>
 
       <Link
@@ -216,13 +315,6 @@ export default function RegisterScreen() {
         KELAS_OPTIONS,
         () => setKelasModalOpen(false),
         setKelas,
-      )}
-      {renderModalPicker(
-        sekolahModalOpen,
-        "Pilih Asal Sekolah",
-        SEKOLAH_OPTIONS,
-        () => setSekolahModalOpen(false),
-        setSekolah,
       )}
     </View>
   );

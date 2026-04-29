@@ -7,6 +7,10 @@ type CerdikInputProps = {
   value: string;
   onChangeText: (value: string) => void;
   keyboardType?: TextInputProps["keyboardType"];
+  autoComplete?: TextInputProps["autoComplete"];
+  textContentType?: TextInputProps["textContentType"];
+  autoCapitalize?: TextInputProps["autoCapitalize"];
+  returnKeyType?: TextInputProps["returnKeyType"];
   error?: string;
   secureTextEntry?: boolean;
   rightIcon?: React.ReactNode;
@@ -19,6 +23,10 @@ export default function CerdikInput({
   value,
   onChangeText,
   keyboardType = "default",
+  autoComplete,
+  textContentType,
+  autoCapitalize = "sentences",
+  returnKeyType = "done",
   error,
   secureTextEntry = false,
   rightIcon,
@@ -45,6 +53,13 @@ export default function CerdikInput({
           value={value}
           onChangeText={onChangeText}
           keyboardType={keyboardType}
+          autoComplete={autoComplete}
+          textContentType={textContentType}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false}
+          returnKeyType={returnKeyType}
+          accessible
+          accessibilityLabel={label}
           secureTextEntry={secureTextEntry}
           style={{ flex: 1, paddingVertical: 12, fontSize: 16, color: CERDIK_COLORS.textPrimary }}
           placeholderTextColor="#94A3B8"
