@@ -1,4 +1,5 @@
 import { Session } from "@supabase/supabase-js";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 
 import { getAuthCallbackUrl, supabase } from "@/services/supabase";
@@ -9,14 +10,15 @@ type AuthUser = {
   email: string;
   kelas: string;
   sekolah: string;
+  phone?: string;
 };
 
 type RegisterPayload = {
   name: string;
+  phone: string;
   email: string;
   password: string;
   kelas: string;
-  sekolah: string;
 };
 
 type AuthState = {
@@ -24,7 +26,7 @@ type AuthState = {
   session: Session | null;
   isLoading: boolean;
   isHydrated: boolean;
-  login: (payload: { email: string; password: string }) => Promise<void>;
+  login: (payload: { email: string; password: string; rememberMe: boolean }) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   updateProfile: (payload: { name: string; kelas: string; sekolah: string }) => Promise<void>;
   logout: () => Promise<void>;
@@ -38,6 +40,7 @@ type ProfileRow = {
   name: string;
   kelas: string;
   sekolah: string;
+  phone?: string;
 };
 
 const mapProfileToUser = (profile: ProfileRow): AuthUser => ({
@@ -48,10 +51,22 @@ const mapProfileToUser = (profile: ProfileRow): AuthUser => ({
   sekolah: profile.sekolah,
 });
 
+const REMEMBER_ME_KEY = "cerdik:remember-me";
+
+const sanitizeText = (value: string) => value.replace(/[<>"'`]/g, "").trim();
+const normalizePhone = (value: string) => {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("62")) return digits;
+  if (digits.startsWith("0")) return `62${digits.slice(1)}`;
+  if (digits.startsWith("8")) return `62${digits}`;
+  return digits;
+};
+
 const getProfileByUserId = async (userId: string) => {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, name, kelas, sekolah")
+    .select("id, email, name, kelas, sekolah, phone")
     .eq("id", userId)
     .single();
 
@@ -67,6 +82,13 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   loadStoredAuth: async () => {
     try {
+      const rememberMe = await AsyncStorage.getItem(REMEMBER_ME_KEY);
+      if (rememberMe === "false") {
+        await supabase.auth.signOut();
+        set({ user: null, session: null, isHydrated: true, isLoading: false });
+        return;
+      }
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -97,12 +119,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  login: async ({ email, password }) => {
+  login: async ({ email, password, rememberMe }) => {
     set({ isLoading: true });
 
     try {
+      await AsyncStorage.setItem(REMEMBER_ME_KEY, rememberMe ? "true" : "false");
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: sanitizeText(email).toLowerCase(),
         password,
       });
 
@@ -124,19 +147,36 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  register: async ({ name, email, password, kelas, sekolah }) => {
+  register: async ({ name, phone, email, password, kelas }) => {
     set({ isLoading: true });
 
     try {
+      const normalizedEmail = sanitizeText(email).toLowerCase();
+      const normalizedPhone = normalizePhone(phone);
+
+      const { data: availability, error: availabilityError } = await supabase.rpc("check_registration_availability", {
+        p_email: normalizedEmail,
+        p_phone: normalizedPhone,
+      });
+
+      if (availabilityError) throw availabilityError;
+      const availabilityResult = Array.isArray(availability) ? availability[0] : availability;
+      if (availabilityResult?.email_taken) {
+        throw new Error("EMAIL_ALREADY_USED");
+      }
+      if (availabilityResult?.phone_taken) {
+        throw new Error("PHONE_ALREADY_USED");
+      }
+
       const { error } = await supabase.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
         options: {
           emailRedirectTo: getAuthCallbackUrl(),
           data: {
-            name,
-            kelas,
-            sekolah,
+            name: sanitizeText(name),
+            phone: normalizedPhone,
+            kelas: sanitizeText(kelas),
           },
         },
       });

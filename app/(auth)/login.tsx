@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
-import { useState } from "react";
-import { Alert, Platform, Text, ToastAndroid, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Alert, Platform, Pressable, Text, ToastAndroid, View } from "react-native";
 
 import CerdikButton from "@/components/ui/CerdikButton";
 import CerdikCard from "@/components/ui/CerdikCard";
@@ -21,24 +21,26 @@ export default function LoginScreen() {
   const { login, isLoading } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const emailValid = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()), [email]);
+  const passwordValid = useMemo(() => password.trim().length >= 8, [password]);
+  const canSubmit = emailValid && passwordValid && !isLoading;
 
   const validateForm = () => {
     let isValid = true;
     setEmailError("");
     setPasswordError("");
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailRegex.test(email.trim())) {
+    if (!emailValid) {
       setEmailError("Format email belum valid.");
       isValid = false;
     }
 
-    if (password.trim().length < 6) {
-      setPasswordError("Password minimal 6 karakter.");
+    if (!passwordValid) {
+      setPasswordError("Password minimal 8 karakter.");
       isValid = false;
     }
 
@@ -48,7 +50,7 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     if (!validateForm()) return;
     try {
-      await login({ email: email.trim(), password });
+      await login({ email: email.trim(), password, rememberMe });
       router.replace("/(tabs)");
     } catch (error) {
       const rawMessage = error instanceof Error ? error.message : "Login gagal. Coba lagi.";
@@ -89,17 +91,30 @@ export default function LoginScreen() {
           label="Email"
           placeholder="contoh@email.com"
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(value) => {
+            setEmail(value);
+            if (emailError) setEmailError("");
+          }}
           keyboardType="email-address"
           error={emailError}
+          autoComplete="email"
+          textContentType="emailAddress"
+          autoCapitalize="none"
+          returnKeyType="next"
         />
         <CerdikInput
           label="Password"
           placeholder="Masukkan password"
           value={password}
-          onChangeText={setPassword}
+          onChangeText={(value) => {
+            setPassword(value);
+            if (passwordError) setPasswordError("");
+          }}
           secureTextEntry={!showPassword}
           error={passwordError}
+          autoComplete="password"
+          textContentType="password"
+          returnKeyType="done"
           rightIcon={
             <Ionicons
               name={showPassword ? "eye-off-outline" : "eye-outline"}
@@ -109,8 +124,22 @@ export default function LoginScreen() {
           }
           onRightIconPress={() => setShowPassword((prev) => !prev)}
         />
+        <Pressable
+          onPress={() => setRememberMe((prev) => !prev)}
+          style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", gap: 8 }}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: rememberMe }}
+          accessibilityLabel="Ingat saya saat login"
+        >
+          <Ionicons
+            name={rememberMe ? "checkbox-outline" : "square-outline"}
+            size={20}
+            color={rememberMe ? CERDIK_COLORS.primary : CERDIK_COLORS.textSecondary}
+          />
+          <Text style={{ color: CERDIK_COLORS.textSecondary }}>Ingat saya</Text>
+        </Pressable>
 
-        <CerdikButton title="Masuk" onPress={handleLogin} loading={isLoading} />
+        <CerdikButton title="Masuk" onPress={handleLogin} loading={isLoading} disabled={!canSubmit} />
         <Text style={{ marginTop: 12, fontSize: 12, lineHeight: 18, color: CERDIK_COLORS.textSecondary }}>
           Akun baru harus verifikasi email dulu sebelum bisa login.
         </Text>
