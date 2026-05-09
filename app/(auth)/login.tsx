@@ -1,41 +1,36 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Link, router } from "expo-router";
+import { Link, router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, Platform, Pressable, Text, ToastAndroid, View } from "react-native";
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
 
 import CerdikButton from "@/components/ui/CerdikButton";
 import CerdikCard from "@/components/ui/CerdikCard";
-import CerdikInput from "@/components/ui/CerdikInput";
+import { loginWithPhone } from "@/services/authService";
 import { CERDIK_COLORS } from "@/constants/colors";
-import { useAuthStore } from "@/stores/useAuthStore";
+import { displayPhone, validatePhone } from "@/utils/phoneValidator";
 
 export default function LoginScreen() {
-  const showErrorToast = (message: string) => {
-    if (Platform.OS === "android") {
-      ToastAndroid.show(message, ToastAndroid.SHORT);
-      return;
-    }
-    Alert.alert("Login Gagal", message);
-  };
-
-  const { login, isLoading } = useAuthStore();
-  const [email, setEmail] = useState("");
+  const params = useLocalSearchParams<{ registered?: string }>();
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [emailError, setEmailError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
   const [passwordError, setPasswordError] = useState("");
-  const emailValid = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()), [email]);
+  const [loginError, setLoginError] = useState("");
+  const phoneValid = useMemo(() => validatePhone(phone).valid, [phone]);
   const passwordValid = useMemo(() => password.trim().length >= 8, [password]);
-  const canSubmit = emailValid && passwordValid && !isLoading;
+  const canSubmit = phoneValid && passwordValid && !isLoading;
 
   const validateForm = () => {
     let isValid = true;
-    setEmailError("");
+    setPhoneError("");
     setPasswordError("");
+    setLoginError("");
 
-    if (!emailValid) {
-      setEmailError("Format email belum valid.");
+    const phoneState = validatePhone(phone);
+    if (!phoneState.valid) {
+      setPhoneError(phoneState.message);
       isValid = false;
     }
 
@@ -49,23 +44,33 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!validateForm()) return;
+
+    setIsLoading(true);
     try {
-      await login({ email: email.trim(), password, rememberMe });
+      const result = await loginWithPhone(phone, password);
+      if (!result.success) {
+        setLoginError(result.error ?? "Login gagal. Coba lagi.");
+        return;
+      }
       router.replace("/(tabs)");
-    } catch (error) {
-      const rawMessage = error instanceof Error ? error.message : "Login gagal. Coba lagi.";
-      const message =
-        rawMessage === "Invalid login credentials"
-          ? "Email atau password salah."
-          : rawMessage === "Email not confirmed"
-            ? "Email kamu belum diverifikasi. Cek inbox lalu coba login lagi."
-            : rawMessage;
-      showErrorToast(message);
+    } catch (error: any) {
+      setLoginError(error?.message ?? "Login gagal. Coba lagi.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <View style={{ flex: 1, justifyContent: "center", backgroundColor: CERDIK_COLORS.background, paddingHorizontal: 24 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ flexGrow: 1, justifyContent: "center", paddingHorizontal: 24, paddingVertical: 24 }}
+      >
       <View style={{ marginBottom: 24, alignItems: "center" }}>
         <View
           style={{
@@ -87,62 +92,78 @@ export default function LoginScreen() {
       </View>
 
       <CerdikCard>
-        <CerdikInput
-          label="Email"
-          placeholder="contoh@email.com"
-          value={email}
-          onChangeText={(value) => {
-            setEmail(value);
-            if (emailError) setEmailError("");
-          }}
-          keyboardType="email-address"
-          error={emailError}
-          autoComplete="email"
-          textContentType="emailAddress"
-          autoCapitalize="none"
-          returnKeyType="next"
-        />
-        <CerdikInput
-          label="Password"
-          placeholder="Masukkan password"
-          value={password}
-          onChangeText={(value) => {
-            setPassword(value);
-            if (passwordError) setPasswordError("");
-          }}
-          secureTextEntry={!showPassword}
-          error={passwordError}
-          autoComplete="password"
-          textContentType="password"
-          returnKeyType="done"
-          rightIcon={
-            <Ionicons
-              name={showPassword ? "eye-off-outline" : "eye-outline"}
-              size={20}
-              color={CERDIK_COLORS.textSecondary}
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: CERDIK_COLORS.textPrimary }}>Nomor HP</Text>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              borderRadius: 16,
+              borderWidth: 1,
+              backgroundColor: "#FFFFFF",
+              paddingHorizontal: 14,
+              borderColor: phoneError ? CERDIK_COLORS.accent : "#E2E8F0",
+            }}
+          >
+            <Text style={{ marginRight: 8, fontSize: 18 }}>🇮🇩</Text>
+            <TextInput
+              placeholder="Nomor HP yang didaftarkan"
+              value={phone}
+              keyboardType="phone-pad"
+              autoComplete="tel"
+              textContentType="telephoneNumber"
+              onChangeText={(value) => {
+                const digits = value.replace(/\D/g, "");
+                setPhone(displayPhone(digits));
+                if (phoneError) setPhoneError("");
+                if (loginError) setLoginError("");
+              }}
+              style={{ flex: 1, paddingVertical: 12, fontSize: 16, color: CERDIK_COLORS.textPrimary }}
+              placeholderTextColor="#94A3B8"
             />
-          }
-          onRightIconPress={() => setShowPassword((prev) => !prev)}
-        />
-        <Pressable
-          onPress={() => setRememberMe((prev) => !prev)}
-          style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", gap: 8 }}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: rememberMe }}
-          accessibilityLabel="Ingat saya saat login"
-        >
-          <Ionicons
-            name={rememberMe ? "checkbox-outline" : "square-outline"}
-            size={20}
-            color={rememberMe ? CERDIK_COLORS.primary : CERDIK_COLORS.textSecondary}
-          />
-          <Text style={{ color: CERDIK_COLORS.textSecondary }}>Ingat saya</Text>
-        </Pressable>
+          </View>
+          {phoneError ? <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.accent }}>{phoneError}</Text> : null}
+        </View>
+
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: CERDIK_COLORS.textPrimary }}>Password</Text>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              borderRadius: 16,
+              borderWidth: 1,
+              backgroundColor: "#FFFFFF",
+              paddingHorizontal: 14,
+              borderColor: passwordError ? CERDIK_COLORS.accent : "#E2E8F0",
+            }}
+          >
+            <TextInput
+              placeholder="Password kamu"
+              value={password}
+              secureTextEntry={!showPassword}
+              autoComplete="password"
+              textContentType="password"
+              onChangeText={(value) => {
+                setPassword(value);
+                if (passwordError) setPasswordError("");
+                if (loginError) setLoginError("");
+              }}
+              style={{ flex: 1, paddingVertical: 12, fontSize: 16, color: CERDIK_COLORS.textPrimary }}
+              placeholderTextColor="#94A3B8"
+            />
+            <Pressable onPress={() => setShowPassword((prev) => !prev)}>
+              <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={CERDIK_COLORS.textSecondary} />
+            </Pressable>
+          </View>
+          {passwordError ? <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.accent }}>{passwordError}</Text> : null}
+        </View>
 
         <CerdikButton title="Masuk" onPress={handleLogin} loading={isLoading} disabled={!canSubmit} />
-        <Text style={{ marginTop: 12, fontSize: 12, lineHeight: 18, color: CERDIK_COLORS.textSecondary }}>
-          Akun baru harus verifikasi email dulu sebelum bisa login.
-        </Text>
+        {loginError ? <Text style={{ marginTop: 10, fontSize: 12, color: CERDIK_COLORS.accent }}>{loginError}</Text> : null}
+        {params.registered === "1" ? (
+          <Text style={{ marginTop: 10, fontSize: 12, color: "#16A34A" }}>Pendaftaran berhasil! Silakan login.</Text>
+        ) : null}
       </CerdikCard>
 
       <Link
@@ -151,6 +172,8 @@ export default function LoginScreen() {
       >
         Belum punya akun? Daftar sekarang
       </Link>
-    </View>
+      </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }

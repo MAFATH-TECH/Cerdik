@@ -3,11 +3,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Animated,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 
@@ -187,8 +191,17 @@ export default function RencanakanScreen() {
     );
 
   return (
-    <View style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}>
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
+      >
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
           <Text style={{ fontSize: 24, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
             Target Keuanganku
@@ -252,6 +265,10 @@ export default function RencanakanScreen() {
 
       <Modal visible={goalModalVisible} transparent animationType="slide" onRequestClose={() => setGoalModalVisible(false)}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" }}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+          >
           <View style={{ maxHeight: "90%", borderTopLeftRadius: 20, borderTopRightRadius: 20, backgroundColor: "#FFFFFF", padding: 18 }}>
             <Text style={{ fontSize: 18, fontWeight: "700", color: CERDIK_COLORS.textPrimary, marginBottom: 10 }}>
               Tambah Goal Baru
@@ -363,6 +380,7 @@ export default function RencanakanScreen() {
               />
             </View>
           </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -380,6 +398,7 @@ export default function RencanakanScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }

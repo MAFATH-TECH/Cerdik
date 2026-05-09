@@ -2,7 +2,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, TextInput, ToastAndroid, View } from "react-native";
+import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, ToastAndroid, TouchableWithoutFeedback, View } from "react-native";
 
 import CurrencyInput from "@/components/ui/CurrencyInput";
 import { CERDIK_COLORS } from "../../constants/colors";
@@ -87,7 +87,18 @@ export default function CatatScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }} contentContainerStyle={{ padding: 20, paddingBottom: 80 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+    >
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+      contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
+    >
       <View
         style={{
           flexDirection: "row",
@@ -274,5 +285,7 @@ export default function CatatScreen() {
         )}
       </Pressable>
     </ScrollView>
+    </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }

@@ -36,8 +36,9 @@ type AuthState = {
 
 type ProfileRow = {
   id: string;
-  email: string;
-  name: string;
+  email?: string | null;
+  name?: string | null;
+  full_name?: string | null;
   kelas: string;
   sekolah: string;
   phone?: string;
@@ -45,10 +46,11 @@ type ProfileRow = {
 
 const mapProfileToUser = (profile: ProfileRow): AuthUser => ({
   id: profile.id,
-  email: profile.email,
-  name: profile.name,
+  email: profile.email ?? "",
+  name: profile.full_name ?? profile.name ?? "Pengguna CERDIK",
   kelas: profile.kelas,
   sekolah: profile.sekolah,
+  phone: profile.phone,
 });
 
 const REMEMBER_ME_KEY = "cerdik:remember-me";
@@ -65,6 +67,16 @@ const normalizePhone = (value: string) => {
 
 const getProfileByUserId = async (userId: string) => {
   ensureSupabaseConfigured();
+  const attemptFullName = await supabase
+    .from("profiles")
+    .select("id, email, full_name, kelas, sekolah, phone")
+    .eq("id", userId)
+    .single();
+
+  if (!attemptFullName.error && attemptFullName.data) {
+    return attemptFullName.data as ProfileRow;
+  }
+
   const { data, error } = await supabase
     .from("profiles")
     .select("id, email, name, kelas, sekolah, phone")
@@ -216,11 +228,26 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error("Sesi login tidak ditemukan. Silakan masuk kembali.");
       }
 
+      const fullNameAttempt = await supabase
+        .from("profiles")
+        .update({ full_name: name, kelas, sekolah })
+        .eq("id", user.id)
+        .select("id, email, full_name, kelas, sekolah, phone")
+        .single();
+
+      if (!fullNameAttempt.error && fullNameAttempt.data) {
+        set({
+          user: mapProfileToUser(fullNameAttempt.data as ProfileRow),
+          isLoading: false,
+        });
+        return;
+      }
+
       const { data, error } = await supabase
         .from("profiles")
         .update({ name, kelas, sekolah })
         .eq("id", user.id)
-        .select("id, email, name, kelas, sekolah")
+        .select("id, email, name, kelas, sekolah, phone")
         .single();
 
       if (error) throw error;

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Animated, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
 
 import { ScreenError } from "@/components/ui/ScreenState";
 import { CERDIK_COLORS } from "../../constants/colors";
@@ -181,8 +181,18 @@ export default function InisiasiScreen() {
   const showQuickReplies = messages.length === 0;
 
   return (
-    <View style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}>
-      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 20, paddingBottom: 14 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <ScrollView
+        ref={scrollRef}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        contentContainerStyle={{ padding: 20, paddingBottom: 36 }}
+      >
         <Text style={{ fontSize: 24, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
           Inisiasi AI Saran
         </Text>
@@ -435,6 +445,7 @@ export default function InisiasiScreen() {
           </View>
         </View>
       </ScrollView>
-    </View>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }

@@ -1,54 +1,41 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, Modal, Pressable, Text, View } from "react-native";
+import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
 
 import CerdikButton from "@/components/ui/CerdikButton";
 import CerdikCard from "@/components/ui/CerdikCard";
 import CerdikInput from "@/components/ui/CerdikInput";
 import { CERDIK_COLORS } from "@/constants/colors";
-import { useAuthStore } from "@/stores/useAuthStore";
+import { registerWithPhone } from "@/services/authService";
+import { displayPhone, formatPhone, validatePhone } from "@/utils/phoneValidator";
 
 const KELAS_OPTIONS = ["X", "XI", "XII"] as const;
-const normalizePhone = (value: string) => {
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits.startsWith("62")) return digits;
-  if (digits.startsWith("0")) return `62${digits.slice(1)}`;
-  if (digits.startsWith("8")) return `62${digits}`;
-  return digits;
-};
 
 export default function RegisterScreen() {
-  const { register, isLoading } = useAuthStore();
-  const [name, setName] = useState("");
+  const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [kelas, setKelas] = useState("");
-  const [nameError, setNameError] = useState("");
+  const [fullNameError, setFullNameError] = useState("");
   const [phoneError, setPhoneError] = useState("");
-  const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [confirmPasswordError, setConfirmPasswordError] = useState("");
   const [kelasError, setKelasError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [kelasModalOpen, setKelasModalOpen] = useState(false);
 
-  const emailValid = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()), [email]);
-  const normalizedPhone = useMemo(() => normalizePhone(phone), [phone]);
-  const phoneValid = useMemo(() => /^628\d{7,11}$/.test(normalizedPhone), [normalizedPhone]);
-  const passwordValid = useMemo(
-    () => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(password),
-    [password],
-  );
+  const phoneValidation = useMemo(() => validatePhone(phone), [phone]);
+  const phoneValid = phoneValidation.valid;
+  const passwordValid = useMemo(() => password.trim().length >= 8, [password]);
   const confirmPasswordValid = useMemo(() => confirmPassword.length > 0 && password === confirmPassword, [confirmPassword, password]);
   const canSubmit =
-    name.trim().length >= 3 &&
+    fullName.trim().length >= 3 &&
     phoneValid &&
-    emailValid &&
     passwordValid &&
     confirmPasswordValid &&
     Boolean(kelas) &&
@@ -56,27 +43,22 @@ export default function RegisterScreen() {
 
   const validateForm = () => {
     let isValid = true;
-    setNameError("");
+    setFullNameError("");
     setPhoneError("");
-    setEmailError("");
     setPasswordError("");
     setConfirmPasswordError("");
     setKelasError("");
 
-    if (name.trim().length < 3) {
-      setNameError("Nama minimal 3 karakter.");
+    if (fullName.trim().length < 3) {
+      setFullNameError("Nama minimal 3 karakter.");
       isValid = false;
     }
     if (!phoneValid) {
-      setPhoneError("Nomor HP belum valid (contoh: 0812xxxx).");
-      isValid = false;
-    }
-    if (!emailValid) {
-      setEmailError("Format email belum valid.");
+      setPhoneError(phoneValidation.message);
       isValid = false;
     }
     if (!passwordValid) {
-      setPasswordError("Password min. 8 karakter dan harus ada huruf besar, kecil, angka, simbol.");
+      setPasswordError("Password minimal 8 karakter.");
       isValid = false;
     }
     if (!confirmPasswordValid) {
@@ -93,33 +75,31 @@ export default function RegisterScreen() {
 
   const handleRegister = async () => {
     if (!validateForm()) return;
+
+    setIsLoading(true);
     try {
-      await register({
-        name: name.trim(),
-        phone: normalizedPhone,
-        email: email.trim(),
+      const result = await registerWithPhone({
+        fullName: fullName.trim(),
+        phone: formatPhone(phone),
         password,
         kelas,
+        sekolah: "Belum diisi",
       });
-      router.replace("/(auth)/verify-email");
+
+      if (!result.success) {
+        Alert.alert("Registrasi Gagal", result.error ?? "Registrasi gagal. Coba lagi.");
+        return;
+      }
+
+      router.replace({
+        pathname: "/(auth)/login",
+        params: { registered: "1" },
+      });
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : "Registrasi gagal. Coba lagi.";
-      const normalizedError = rawMessage.toLowerCase();
-      const emailAlreadyUsed =
-        rawMessage === "EMAIL_ALREADY_USED" ||
-        normalizedError.includes("already registered") ||
-        normalizedError.includes("already been registered") ||
-        normalizedError.includes("already exists") ||
-        normalizedError.includes("duplicate key");
-      const phoneAlreadyUsed =
-        rawMessage === "PHONE_ALREADY_USED" ||
-        normalizedError.includes("phone") && normalizedError.includes("duplicate");
-      const message = emailAlreadyUsed
-        ? "Email ini sudah terdaftar. Silakan login."
-        : phoneAlreadyUsed
-          ? "Nomor HP ini sudah dipakai akun lain."
-          : rawMessage;
-      Alert.alert("Registrasi Gagal", message);
+      Alert.alert("Registrasi Gagal", rawMessage);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -194,7 +174,16 @@ export default function RegisterScreen() {
   );
 
   return (
-    <View style={{ flex: 1, justifyContent: "center", backgroundColor: CERDIK_COLORS.background, paddingHorizontal: 24 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ flexGrow: 1, justifyContent: "center", paddingHorizontal: 24, paddingVertical: 24 }}
+      >
       <View style={{ marginBottom: 16, alignItems: "center" }}>
         <Text style={{ fontSize: 30 }}>🎯</Text>
         <Text style={{ marginTop: 8, fontSize: 24, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
@@ -203,57 +192,63 @@ export default function RegisterScreen() {
         <Text style={{ marginTop: 4, fontSize: 14, color: CERDIK_COLORS.textSecondary }}>
           Mulai kebiasaan finansial sehat sejak SMA/MAN
         </Text>
-        <Text style={{ marginTop: 8, fontSize: 12, textAlign: "center", color: CERDIK_COLORS.textSecondary }}>
-          Setelah daftar, akun akan aktif setelah kamu verifikasi email.
-        </Text>
       </View>
 
       <CerdikCard>
         <CerdikInput
           label="Nama Lengkap"
-          placeholder="Nama lengkap"
-          value={name}
+          placeholder="Nama lengkap kamu"
+          value={fullName}
           onChangeText={(value) => {
-            setName(value);
-            if (nameError) setNameError("");
+            setFullName(value);
+            if (fullNameError) setFullNameError("");
           }}
-          error={nameError}
+          error={fullNameError}
           autoComplete="name"
           textContentType="name"
           returnKeyType="next"
         />
-        <CerdikInput
-          label="Nomor HP"
-          placeholder="08xxxxxxxxxx"
-          value={phone}
-          onChangeText={(value) => {
-            setPhone(normalizePhone(value));
-            if (phoneError) setPhoneError("");
-          }}
-          keyboardType="phone-pad"
-          error={phoneError}
-          autoComplete="tel"
-          textContentType="telephoneNumber"
-          returnKeyType="next"
-        />
-        <CerdikInput
-          label="Email"
-          placeholder="contoh@email.com"
-          value={email}
-          onChangeText={(value) => {
-            setEmail(value);
-            if (emailError) setEmailError("");
-          }}
-          keyboardType="email-address"
-          error={emailError}
-          autoComplete="email"
-          textContentType="emailAddress"
-          autoCapitalize="none"
-          returnKeyType="next"
-        />
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: CERDIK_COLORS.textPrimary }}>
+            Nomor HP
+          </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              borderRadius: 16,
+              borderWidth: 1,
+              backgroundColor: "#FFFFFF",
+              paddingHorizontal: 14,
+              borderColor: phoneError ? CERDIK_COLORS.accent : "#E2E8F0",
+            }}
+          >
+            <Text style={{ marginRight: 8, fontSize: 18 }}>🇮🇩</Text>
+            <TextInput
+              placeholder="08xx-xxxx-xxxx"
+              value={phone}
+              keyboardType="phone-pad"
+              autoComplete="tel"
+              textContentType="telephoneNumber"
+              onBlur={() => {
+                setPhoneTouched(true);
+                if (!phoneValid) setPhoneError(phoneValidation.message);
+              }}
+              onChangeText={(value) => {
+                const digits = value.replace(/\D/g, "");
+                setPhone(displayPhone(digits));
+                if (phoneError) setPhoneError("");
+              }}
+              style={{ flex: 1, paddingVertical: 12, fontSize: 16, color: CERDIK_COLORS.textPrimary }}
+              placeholderTextColor="#94A3B8"
+            />
+            {phoneTouched && phoneValid ? <Ionicons name="checkmark-circle" size={18} color="#16A34A" /> : null}
+          </View>
+          {phoneError ? <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.accent }}>{phoneError}</Text> : null}
+        </View>
         <CerdikInput
           label="Password"
-          placeholder="Min. 8 karakter + Ab1!"
+          placeholder="Buat password (min. 8 karakter)"
           value={password}
           onChangeText={(value) => {
             setPassword(value);
@@ -273,28 +268,49 @@ export default function RegisterScreen() {
           }
           onRightIconPress={() => setShowPassword((prev) => !prev)}
         />
-        <CerdikInput
-          label="Konfirmasi Password"
-          placeholder="Ulangi password"
-          value={confirmPassword}
-          onChangeText={(value) => {
-            setConfirmPassword(value);
-            if (confirmPasswordError) setConfirmPasswordError("");
-          }}
-          secureTextEntry={!showConfirmPassword}
-          error={confirmPasswordError}
-          autoComplete="new-password"
-          textContentType="newPassword"
-          returnKeyType="done"
-          rightIcon={
-            <Ionicons
-              name={showConfirmPassword ? "eye-off-outline" : "eye-outline"}
-              size={20}
-              color={CERDIK_COLORS.textSecondary}
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: CERDIK_COLORS.textPrimary }}>
+            Konfirmasi Password
+          </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              borderRadius: 16,
+              borderWidth: 1,
+              backgroundColor: "#FFFFFF",
+              paddingHorizontal: 14,
+              borderColor: confirmPasswordError ? CERDIK_COLORS.accent : "#E2E8F0",
+            }}
+          >
+            <TextInput
+              placeholder="Ulangi password"
+              value={confirmPassword}
+              secureTextEntry={!showConfirmPassword}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              onChangeText={(value) => {
+                setConfirmPassword(value);
+                if (confirmPasswordError) setConfirmPasswordError("");
+              }}
+              style={{ flex: 1, paddingVertical: 12, fontSize: 16, color: CERDIK_COLORS.textPrimary }}
+              placeholderTextColor="#94A3B8"
             />
-          }
-          onRightIconPress={() => setShowConfirmPassword((prev) => !prev)}
-        />
+            {confirmPassword.length > 0 ? (
+              <Ionicons name={confirmPasswordValid ? "checkmark-circle" : "close-circle"} size={18} color={confirmPasswordValid ? "#16A34A" : "#DC2626"} />
+            ) : null}
+            <Pressable onPress={() => setShowConfirmPassword((prev) => !prev)} style={{ marginLeft: 8 }}>
+              <Ionicons
+                name={showConfirmPassword ? "eye-off-outline" : "eye-outline"}
+                size={20}
+                color={CERDIK_COLORS.textSecondary}
+              />
+            </Pressable>
+          </View>
+          {confirmPasswordError ? (
+            <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.accent }}>{confirmPasswordError}</Text>
+          ) : null}
+        </View>
 
         {renderSelect("Kelas", kelas, () => setKelasModalOpen(true))}
         {kelasError ? <Text style={{ marginTop: -8, marginBottom: 12, fontSize: 12, color: CERDIK_COLORS.accent }}>{kelasError}</Text> : null}
@@ -316,6 +332,8 @@ export default function RegisterScreen() {
         () => setKelasModalOpen(false),
         setKelas,
       )}
-    </View>
+      </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }

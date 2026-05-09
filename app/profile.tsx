@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, Switch, Text, TextInput, View } from "react-native";
+import { Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
 
 import CerdikButton from "@/components/ui/CerdikButton";
 import CerdikCard from "@/components/ui/CerdikCard";
@@ -93,7 +93,18 @@ export default function ProfileScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: CERDIK_COLORS.background, padding: 20 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+    >
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+      contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
+    >
       <View style={{ alignItems: "center", marginBottom: 16 }}>
         <View
           style={{
@@ -246,6 +257,8 @@ export default function ProfileScreen() {
       </View>
 
       <CerdikButton title="Logout" onPress={handleLogout} variant="danger" />
-    </View>
+    </ScrollView>
+    </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
