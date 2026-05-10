@@ -8,7 +8,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import TransactionSwipeRow from "@/components/TransactionSwipeRow";
 import SummaryCard from "@/components/ui/SummaryCard";
-import { useTrend } from "@/hooks/useFinancialAnalysis";
 import { useEarlyWarning } from "@/hooks/useEarlyWarning";
 import { userSettingsService } from "@/services/userSettingsService";
 import { CERDIK_COLORS } from "../../constants/colors";
@@ -54,15 +53,6 @@ export default function HomeScreen() {
 
   const activeGoals = goals.filter((goal) => !goal.isCompleted);
   const warnings = useEarlyWarning();
-  const {
-    incomeTrend,
-    expenseTrend,
-    savingTrend,
-    incomeTrendPositive,
-    expenseTrendPositive,
-    savingTrendPositive,
-    trendIsNewData,
-  } = useTrend();
   const visibleWarnings = warnings.filter((w) => !dismissedWarningIds.includes(w.id));
   const topWarning = visibleWarnings[0] ?? null;
   const hiddenWarningCount = Math.max(0, visibleWarnings.length - 1);
@@ -159,6 +149,27 @@ export default function HomeScreen() {
   const totalExpense = summary?.totalExpense ?? 0;
   const totalSavings = summary?.totalSaving ?? 0;
   const netBalance = summary?.net ?? 0;
+
+  /** Persentase dari pemasukan bulan ini saja (sumber: summary = transaksi periode yang sama dengan nominal kartu). */
+  const monthShareTrend = useMemo(() => {
+    const inc = summary?.totalIncome ?? 0;
+    const exp = summary?.totalExpense ?? 0;
+    const sav = summary?.totalSaving ?? 0;
+    if (inc <= 0) {
+      return {
+        incomeLabel: "—",
+        expenseLabel: "—",
+        savingLabel: "—",
+        neutral: true,
+      };
+    }
+    return {
+      incomeLabel: "100%",
+      expenseLabel: `${Math.round((exp / inc) * 100)}%`,
+      savingLabel: `${Math.round((sav / inc) * 100)}%`,
+      neutral: false,
+    };
+  }, [summary]);
   const latestTransactions = recentTransactions;
   const studentName = user?.name ?? "Siswa";
   const studentInitial = studentName.charAt(0).toUpperCase();
@@ -288,9 +299,9 @@ export default function HomeScreen() {
             amountValue={totalIncome}
             icon="arrow-up-circle"
             color="#16A34A"
-            trend={incomeTrend}
-            trendUp={incomeTrendPositive}
-            trendIsNewData={trendIsNewData}
+            trend={monthShareTrend.incomeLabel}
+            trendUp
+            trendNeutral={monthShareTrend.neutral}
           />
         </View>
         <View style={{ width: 175 }}>
@@ -299,9 +310,9 @@ export default function HomeScreen() {
             amountValue={totalExpense}
             icon="arrow-down-circle"
             color="#EF4444"
-            trend={expenseTrend}
-            trendUp={expenseTrendPositive}
-            trendIsNewData={trendIsNewData}
+            trend={monthShareTrend.expenseLabel}
+            trendUp={false}
+            trendNeutral={monthShareTrend.neutral}
           />
         </View>
         <View style={{ width: 175 }}>
@@ -310,12 +321,24 @@ export default function HomeScreen() {
             amountValue={totalSavings}
             icon="wallet"
             color="#2563EB"
-            trend={savingTrend}
-            trendUp={savingTrendPositive}
-            trendIsNewData={trendIsNewData}
+            trend={monthShareTrend.savingLabel}
+            trendUp
+            trendNeutral={monthShareTrend.neutral}
           />
         </View>
       </ScrollView>
+
+      <Text
+        style={{
+          fontSize: 11,
+          color: CERDIK_COLORS.textSecondary,
+          marginTop: -6,
+          marginBottom: 12,
+          paddingHorizontal: 2,
+        }}
+      >
+        Persentase di bawah nominal: porsi dari pemasukan bulan ini (data transaksi yang sama dengan angka di atas).
+      </Text>
 
       <View
         style={{

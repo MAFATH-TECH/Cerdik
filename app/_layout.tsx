@@ -82,36 +82,36 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-    <SafeAreaProvider>
-      <StatusBar barStyle="dark-content" />
-      <Stack
-        initialRouteName="index"
-        screenOptions={{
-          headerStyle: { backgroundColor: CERDIK_COLORS.card },
-          headerTintColor: CERDIK_COLORS.textPrimary,
-          headerShadowVisible: false,
-          contentStyle: { backgroundColor: CERDIK_COLORS.background },
-        }}
-      >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="(auth)/login"
-          options={{
-            title: "Masuk",
-            headerBackVisible: false,
-            headerLeft: () => null,
-            gestureEnabled: false,
+      <SafeAreaProvider>
+        <StatusBar barStyle="dark-content" />
+        <Stack
+          initialRouteName="index"
+          screenOptions={{
+            headerStyle: { backgroundColor: CERDIK_COLORS.card },
+            headerTintColor: CERDIK_COLORS.textPrimary,
+            headerShadowVisible: false,
+            contentStyle: { backgroundColor: CERDIK_COLORS.background },
           }}
-        />
-        <Stack.Screen name="(auth)/register" options={{ title: "Daftar" }} />
-        <Stack.Screen name="(auth)/verify-email" options={{ title: "Cek Email" }} />
-        <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
-        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-        <Stack.Screen name="profile" options={{ title: "Pengaturan" }} />
-        <Stack.Screen name="transactions" options={{ title: "Semua Transaksi" }} />
-        <Stack.Screen name="edit-transaction" options={{ title: "Edit Transaksi" }} />
-      </Stack>
-    </SafeAreaProvider>
+        >
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="(auth)/login"
+            options={{
+              title: "Masuk",
+              headerBackVisible: false,
+              headerLeft: () => null,
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen name="(auth)/register" options={{ title: "Daftar" }} />
+          <Stack.Screen name="(auth)/verify-email" options={{ title: "Cek Email" }} />
+          <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
+          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+          <Stack.Screen name="profile" options={{ title: "Pengaturan" }} />
+          <Stack.Screen name="transactions" options={{ title: "Semua Transaksi" }} />
+          <Stack.Screen name="edit-transaction" options={{ title: "Edit Transaksi" }} />
+        </Stack>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

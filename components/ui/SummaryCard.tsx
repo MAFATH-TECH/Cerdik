@@ -9,10 +9,13 @@ type SummaryCardProps = {
   amountValue: number;
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
-  trend: string;
+  /** Jika false, baris tren disembunyikan (mis. Beranda pakai ringkasan bulan terpisah). */
+  showTrend?: boolean;
+  trend?: string;
   /** true = hijau & panah naik (baik untuk kartu ini); false = merah & panah turun */
   trendUp?: boolean;
-  /** Bulan lalu belum ada transaksi — tampil "Data baru", netral */
+  /** Bulan lalu tidak ada data pembanding — tampil "—" netral */
+  trendNeutral?: boolean;
   trendIsNewData?: boolean;
 };
 
@@ -24,18 +27,21 @@ export default function SummaryCard({
   amountValue,
   icon,
   color,
-  trend,
+  showTrend = true,
+  trend = "",
   trendUp,
+  trendNeutral,
   trendIsNewData,
 }: SummaryCardProps) {
-  const isNew = trendIsNewData === true || trend.trim() === "Data baru";
+  const neutralRow =
+    trendNeutral === true || trend.trim() === "—" || trendIsNewData === true || trend.trim() === "Data baru";
   const up = trendUp ?? trend.trim().startsWith("+");
-  const trendColor = isNew ? CERDIK_COLORS.textSecondary : up ? "#16A34A" : "#EF4444";
-  const trendIcon: keyof typeof Ionicons.glyphMap = isNew
-    ? "ellipse-outline"
+  const trendColor = neutralRow ? CERDIK_COLORS.textSecondary : up ? "#16A34A" : "#EF4444";
+  const trendIcon: keyof typeof Ionicons.glyphMap = neutralRow
+    ? "analytics-outline"
     : up
-      ? "arrow-up"
-      : "arrow-down";
+      ? "trending-up"
+      : "trending-down";
 
   const animated = useRef(new Animated.Value(0)).current;
   const [displayValue, setDisplayValue] = useState(0);
@@ -81,12 +87,14 @@ export default function SummaryCard({
 
       <Text style={{ fontSize: 18, fontWeight: "900", color: CERDIK_COLORS.textPrimary }}>{formatted}</Text>
 
-      <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center" }}>
-        <Ionicons name={trendIcon} size={14} color={trendColor} />
-        <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "800", color: trendColor }}>
-          {trend}
-        </Text>
-      </View>
+      {showTrend ? (
+        <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center" }}>
+          <Ionicons name={trendIcon} size={14} color={trendColor} />
+          <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "800", color: trendColor }}>
+            {trend}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }

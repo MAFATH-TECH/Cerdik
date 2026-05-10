@@ -1,7 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-
-import { transactionService } from "@/services/transactionService";
-import { Transaction, useTransactionStore } from "@/stores/useTransactionStore";
+import { Transaction } from "@/stores/useTransactionStore";
 
 export type FinancialPeriod = "week" | "month" | "threeMonths";
 
@@ -115,101 +112,6 @@ export const buildCategoryExpenseData = (transactions: Transaction[]) => {
     color: CHART_COLORS[index % CHART_COLORS.length],
   }));
 };
-
-export function useTrend() {
-  const storeTransactions = useTransactionStore((s) => s.transactions);
-  const [pairMonthTx, setPairMonthTx] = useState<Transaction[]>([]);
-
-  const txFingerprint = useMemo(
-    () => storeTransactions.map((t) => `${t.id}:${t.amount}:${t.category}:${t.type}:${t.date}`).join("|"),
-    [storeTransactions],
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const now = new Date();
-        const curM = now.getMonth() + 1;
-        const curY = now.getFullYear();
-        const prevCal = new Date(curY, now.getMonth() - 1, 1);
-        const prevM = prevCal.getMonth() + 1;
-        const prevY = prevCal.getFullYear();
-        const [cur, prev] = await Promise.all([
-          transactionService.getTransactions({ month: curM, year: curY }),
-          transactionService.getTransactions({ month: prevM, year: prevY }),
-        ]);
-        if (!cancelled) setPairMonthTx([...cur, ...prev]);
-      } catch {
-        if (!cancelled) setPairMonthTx([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [txFingerprint]);
-
-  return useMemo(() => {
-    const now = new Date();
-
-    const thisMonth = pairMonthTx.filter((tx) => {
-      const d = new Date(tx.date);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    });
-
-    const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonth = pairMonthTx.filter((tx) => {
-      const d = new Date(tx.date);
-      return d.getMonth() === lastMonthDate.getMonth() && d.getFullYear() === lastMonthDate.getFullYear();
-    });
-
-    const calc = (txList: Transaction[]) => ({
-      income: txList.filter((tx) => tx.type === "income").reduce((s, tx) => s + tx.amount, 0),
-      expense: txList.filter((tx) => tx.type === "expense").reduce((s, tx) => s + tx.amount, 0),
-      saving: txList
-        .filter((tx) => tx.category === "Tabungan" || tx.category === "Menabung")
-        .reduce((s, tx) => s + tx.amount, 0),
-    });
-
-    const current = calc(thisMonth);
-    const previous = calc(lastMonth);
-
-    const noBaselineLastMonth = lastMonth.length === 0;
-
-    function getTrend(curr: number, prev: number): string {
-      if (prev === 0) return curr > 0 ? "+100%" : "0%";
-      const change = ((curr - prev) / prev) * 100;
-      const rounded = Math.round(change);
-      return rounded >= 0 ? `+${rounded}%` : `${rounded}%`;
-    }
-
-    const incomeTrend = noBaselineLastMonth ? "Data baru" : getTrend(current.income, previous.income);
-    const expenseTrend = noBaselineLastMonth ? "Data baru" : getTrend(current.expense, previous.expense);
-    const savingTrend = noBaselineLastMonth ? "Data baru" : getTrend(current.saving, previous.saving);
-
-    const incomeIsUp = current.income >= previous.income;
-    const expenseIsUp = current.expense >= previous.expense;
-    const savingIsUp = current.saving >= previous.saving;
-
-    /** Untuk warna/panah: pemasukan & tabungan naik = bagus; pengeluaran turun = bagus */
-    const incomeTrendPositive = current.income >= previous.income;
-    const expenseTrendPositive = current.expense <= previous.expense;
-    const savingTrendPositive = current.saving >= previous.saving;
-
-    return {
-      incomeTrend,
-      expenseTrend,
-      savingTrend,
-      incomeIsUp,
-      expenseIsUp,
-      savingIsUp,
-      incomeTrendPositive,
-      expenseTrendPositive,
-      savingTrendPositive,
-      trendIsNewData: noBaselineLastMonth,
-    };
-  }, [pairMonthTx]);
-}
 
 export const generateAnalysisTexts = (
   summary: { totalIncome: number; totalExpense: number; net: number },

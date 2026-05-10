@@ -355,11 +355,6 @@ export default function EvaluasiScreen() {
     };
   }, [savingSharePct]);
 
-  const expenseCategoryTotal = useMemo(
-    () => summary.byCategory.reduce((s, x) => s + x.total, 0),
-    [summary.byCategory],
-  );
-
   const insights = useMemo(() => {
     const computed: string[] = [];
 
@@ -368,20 +363,31 @@ export default function EvaluasiScreen() {
       return computed;
     }
 
-    const savingRate = (summary.net / summary.totalIncome) * 100;
+    if (summary.net < 0) {
+      computed.push("Pengeluaranmu melebihi pemasukan pada periode ini. Yuk evaluasi!");
+    }
 
-    if (savingRate >= 20) computed.push("Keren! Tabunganmu sudah di atas 20% — pertahankan!");
-    else if (savingRate > 0) computed.push(`Tabunganmu ${savingRate.toFixed(0)}% dari pemasukan. Target minimal 20% ya!`);
-    else if (savingRate === 0) computed.push("Pengeluaranmu sama persis dengan pemasukan. Coba sisihkan sedikit!");
-    else computed.push("Pengeluaranmu melebihi pemasukan bulan ini. Yuk evaluasi!");
+    const savingRateRecorded =
+      summary.totalIncome > 0 ? (summary.totalSaving / summary.totalIncome) * 100 : 0;
 
-    if (summary.byCategory.length > 0) {
-      const expenseCatSum = summary.byCategory.reduce((s, x) => s + x.total, 0);
-      if (expenseCatSum > 0) {
-        const top = summary.byCategory[0];
-        const pct = Math.round((top.total / expenseCatSum) * 100);
-        computed.push(`Pengeluaran terbesar kamu di kategori ${top.category} (${pct}% dari total kategori).`);
+    if (summary.net >= 0) {
+      if (savingRateRecorded >= 20) {
+        computed.push("Keren! Tabungan tercatat sudah di atas 20% dari pemasukan — pertahankan!");
+      } else if (savingRateRecorded > 0) {
+        computed.push(
+          `Tabungan tercatat ${savingRateRecorded.toFixed(0)}% dari pemasukan (kategori Tabungan/Menabung). Target minimal 20% ya!`,
+        );
+      } else {
+        computed.push(
+          "Belum ada tabungan tercatat lewat kategori Tabungan atau Menabung. Yuk sisihkan dan catat!",
+        );
       }
+    }
+
+    if (summary.byCategory.length > 0 && summary.totalExpense > 0) {
+      const top = summary.byCategory[0];
+      const pct = Math.round((top.total / summary.totalExpense) * 100);
+      computed.push(`Pengeluaran terbesar kamu di kategori ${top.category} (${pct}% dari total pengeluaran).`);
     }
 
     const activeGoals = goals.filter((g) => !g.isCompleted);
@@ -392,7 +398,7 @@ export default function EvaluasiScreen() {
     }
 
     return computed;
-  }, [goals, summary.byCategory, summary.net, summary.totalExpense, summary.totalIncome]);
+  }, [goals, summary.byCategory, summary.net, summary.totalExpense, summary.totalIncome, summary.totalSaving]);
 
   const progressBarWidth = (pct: number) => `${Math.max(0, Math.min(100, pct))}%`;
 
@@ -604,7 +610,8 @@ export default function EvaluasiScreen() {
       <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 14 }}>
         <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>Pengeluaran per Kategori</Text>
         <Text style={{ marginBottom: 10, fontSize: 12, color: CERDIK_COLORS.textSecondary }}>
-          Slice hijau (#43D9AD) = tabungan yang kamu catat (Tabungan + Menabung).
+          Diagram ini membandingkan nominal antar irisan: kategori pengeluaran lain + satu slice hijau untuk total tabungan
+          yang kamu catat (Tabungan + Menabung). Kategori pemasukan (mis. Uang Saku, Beasiswa) tidak masuk diagram ini.
         </Text>
         <View style={{ alignItems: "center", marginBottom: 12 }}>
           {pieData.length === 0 ? (
@@ -652,14 +659,15 @@ export default function EvaluasiScreen() {
               </View>
             ) : null}
             {summary.byCategory.map((item) => {
-              const pct = expenseCategoryTotal > 0 ? (item.total / expenseCategoryTotal) * 100 : 0;
+              const pct =
+                summary.totalExpense > 0 ? (item.total / summary.totalExpense) * 100 : 0;
               const color = CATEGORY_COLORS[item.category] ?? "#888888";
               return (
                 <View key={`table-${item.category}`} style={{ marginBottom: 14 }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                     <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "600" }}>{item.category}</Text>
                     <Text style={{ color: CERDIK_COLORS.textSecondary }}>
-                      {formatCurrency(item.total)} | {pct.toFixed(1)}%
+                      {formatCurrency(item.total)} | {pct.toFixed(1)}% pengeluaran
                     </Text>
                   </View>
                   <View style={{ marginTop: 6, height: 8, borderRadius: 999, backgroundColor: "#E2E8F0" }}>
