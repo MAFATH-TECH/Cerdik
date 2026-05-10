@@ -2,11 +2,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import TransactionSwipeRow from "@/components/TransactionSwipeRow";
 import SummaryCard from "@/components/ui/SummaryCard";
+import { useTrend } from "@/hooks/useFinancialAnalysis";
 import { useEarlyWarning } from "@/hooks/useEarlyWarning";
 import { userSettingsService } from "@/services/userSettingsService";
 import { CERDIK_COLORS } from "../../constants/colors";
@@ -31,6 +33,7 @@ const mapCategoryIcon = (category: string): keyof typeof Ionicons.glyphMap => {
   if (category === "Transportasi") return "car-outline";
   if (category === "Makan") return "restaurant-outline";
   if (category === "Tabungan") return "wallet-outline";
+  if (category === "Menabung") return "save-outline";
   if (category === "Beasiswa") return "school-outline";
   if (category === "Uang Saku") return "cash-outline";
   if (category === "Hadiah") return "gift-outline";
@@ -45,11 +48,21 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [weeklyExpenseLimit, setWeeklyExpenseLimit] = useState(0);
   const { user } = useAuthStore();
-  const { transactions, loadTransactions, loadSummary, isLoading: txLoading, summary } = useTransactionStore();
+  const { transactions, loadTransactions, loadSummary, isLoading: txLoading, summary, removeTransaction } =
+    useTransactionStore();
   const { goals, loadGoals } = useGoalStore();
 
   const activeGoals = goals.filter((goal) => !goal.isCompleted);
   const warnings = useEarlyWarning();
+  const {
+    incomeTrend,
+    expenseTrend,
+    savingTrend,
+    incomeTrendPositive,
+    expenseTrendPositive,
+    savingTrendPositive,
+    trendIsNewData,
+  } = useTrend();
   const visibleWarnings = warnings.filter((w) => !dismissedWarningIds.includes(w.id));
   const topWarning = visibleWarnings[0] ?? null;
   const hiddenWarningCount = Math.max(0, visibleWarnings.length - 1);
@@ -142,19 +155,9 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topWarning?.id, topWarning?.severity]);
 
-  const thisMonthTransactions = useMemo(() => {
-    const now = new Date();
-    return transactions.filter((tx) => {
-      const txDate = new Date(tx.createdAt);
-      return txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
-    });
-  }, [transactions]);
-
   const totalIncome = summary?.totalIncome ?? 0;
   const totalExpense = summary?.totalExpense ?? 0;
-  const totalSavings = thisMonthTransactions
-    .filter((tx) => tx.category === "Tabungan")
-    .reduce((total, tx) => total + tx.amount, 0);
+  const totalSavings = summary?.totalSaving ?? 0;
   const netBalance = summary?.net ?? 0;
   const latestTransactions = recentTransactions;
   const studentName = user?.name ?? "Siswa";
@@ -280,13 +283,37 @@ export default function HomeScreen() {
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, marginBottom: 14 }}>
         <View style={{ width: 175 }}>
-          <SummaryCard title="Pemasukan" amountValue={totalIncome} icon="arrow-up-circle" color="#16A34A" trend="+5%" />
+          <SummaryCard
+            title="Pemasukan"
+            amountValue={totalIncome}
+            icon="arrow-up-circle"
+            color="#16A34A"
+            trend={incomeTrend}
+            trendUp={incomeTrendPositive}
+            trendIsNewData={trendIsNewData}
+          />
         </View>
         <View style={{ width: 175 }}>
-          <SummaryCard title="Pengeluaran" amountValue={totalExpense} icon="arrow-down-circle" color="#EF4444" trend="-3%" />
+          <SummaryCard
+            title="Pengeluaran"
+            amountValue={totalExpense}
+            icon="arrow-down-circle"
+            color="#EF4444"
+            trend={expenseTrend}
+            trendUp={expenseTrendPositive}
+            trendIsNewData={trendIsNewData}
+          />
         </View>
         <View style={{ width: 175 }}>
-          <SummaryCard title="Tabungan" amountValue={totalSavings} icon="wallet" color="#2563EB" trend="+8%" />
+          <SummaryCard
+            title="Tabungan"
+            amountValue={totalSavings}
+            icon="wallet"
+            color="#2563EB"
+            trend={savingTrend}
+            trendUp={savingTrendPositive}
+            trendIsNewData={trendIsNewData}
+          />
         </View>
       </ScrollView>
 
@@ -385,46 +412,68 @@ export default function HomeScreen() {
           const isExpense = tx.type === "expense";
           const isLast = idx === latestTransactions.length - 1;
           return (
-            <View
+            <TransactionSwipeRow
               key={tx.id}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                paddingVertical: 10,
-                borderBottomWidth: isLast ? 0 : 1,
-                borderBottomColor: "#EEF2F7",
-              }}
+              onEdit={() =>
+                router.push({ pathname: "/edit-transaction", params: { transactionId: tx.id } } as any)
+              }
+              onDelete={() =>
+                Alert.alert("Hapus Transaksi", "Yakin mau hapus transaksi ini?", [
+                  { text: "Batal", style: "cancel" },
+                  {
+                    text: "Hapus",
+                    style: "destructive",
+                    onPress: () => {
+                      removeTransaction(tx.id)
+                        .then(() => {
+                          loadRecent().catch(() => undefined);
+                        })
+                        .catch(() => undefined);
+                    },
+                  },
+                ])
+              }
             >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 17,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: isExpense ? "#FEE2E2" : "#DCFCE7",
-                  }}
-                >
-                  <Ionicons
-                    name={mapCategoryIcon(tx.category)}
-                    size={16}
-                    color={isExpense ? "#B91C1C" : "#166534"}
-                  />
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: 10,
+                  borderBottomWidth: isLast ? 0 : 1,
+                  borderBottomColor: "#EEF2F7",
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: isExpense ? "#FEE2E2" : "#DCFCE7",
+                    }}
+                  >
+                    <Ionicons
+                      name={mapCategoryIcon(tx.category)}
+                      size={16}
+                      color={isExpense ? "#B91C1C" : "#166534"}
+                    />
+                  </View>
+                  <View>
+                    <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "600" }}>
+                      {tx.note || tx.category}
+                    </Text>
+                    <Text style={{ color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>{formatDate(tx.createdAt)}</Text>
+                  </View>
                 </View>
-                <View>
-                  <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "600" }}>
-                    {tx.note || tx.category}
-                  </Text>
-                  <Text style={{ color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>{formatDate(tx.createdAt)}</Text>
-                </View>
+                <Text style={{ color: isExpense ? "#DC2626" : "#16A34A", fontWeight: "700" }}>
+                  {isExpense ? "-" : "+"}
+                  {formatRupiah(tx.amount).replace("Rp ", "Rp ")}
+                </Text>
               </View>
-              <Text style={{ color: isExpense ? "#DC2626" : "#16A34A", fontWeight: "700" }}>
-                {isExpense ? "-" : "+"}
-                {formatRupiah(tx.amount).replace("Rp ", "Rp ")}
-              </Text>
-            </View>
+            </TransactionSwipeRow>
           );
         })
         )}

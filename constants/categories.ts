@@ -1,4 +1,6 @@
 export const CATEGORY_COLORS: Record<string, string> = {
+  Tabungan: "#43D9AD",
+  Menabung: "#43D9AD",
   Makan: "#FF6B6B",
   Transportasi: "#6C63FF",
   Jajan: "#FFB347",

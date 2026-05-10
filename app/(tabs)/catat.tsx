@@ -11,6 +11,7 @@ import { useTransactionStore } from "../../stores/useTransactionStore";
 type TransactionType = "income" | "expense";
 
 const EXPENSE_CATEGORIES = [
+  { label: "Menabung", emoji: "💰" },
   { label: "Makan", emoji: "🍽️" },
   { label: "Transportasi", emoji: "🚌" },
   { label: "Jajan", emoji: "🍟" },
@@ -22,6 +23,7 @@ const EXPENSE_CATEGORIES = [
 ] as const;
 
 const INCOME_CATEGORIES = [
+  { label: "Tabungan", emoji: "💵" },
   { label: "Uang Saku", emoji: "💸" },
   { label: "Beasiswa", emoji: "🎓" },
   { label: "Hadiah", emoji: "🎁" },

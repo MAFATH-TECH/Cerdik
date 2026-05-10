@@ -38,6 +38,14 @@ export function useEarlyWarning(): Warning[] {
       return tx.type === "expense" && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     });
 
+    const thisMonthTx = transactions.filter((tx) => {
+      const d = new Date(tx.date);
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+    const savingThisMonth = thisMonthTx.filter(
+      (tx) => tx.category === "Tabungan" || tx.category === "Menabung",
+    );
+
     const totalExpense = summary?.totalExpense ?? 0;
     const totalIncome = summary?.totalIncome ?? 0;
 
@@ -157,6 +165,20 @@ export function useEarlyWarning(): Warning[] {
           actionRoute: "/(tabs)/evaluasi",
         });
       }
+    }
+
+    // RULE 7: Belum ada catatan tabungan (Tabungan / Menabung) bulan ini
+    if (savingThisMonth.length === 0) {
+      warnings.push({
+        id: "no_saving",
+        type: "NO_SAVING",
+        title: "Belum Menabung Bulan Ini",
+        message:
+          "Kamu belum menabung bulan ini. Yuk sisihkan sebagian uang sakumu! 💰",
+        severity: "medium",
+        actionLabel: "Catat Tabungan",
+        actionRoute: "/(tabs)/catat",
+      });
     }
 
     // Urutkan: high → medium → low

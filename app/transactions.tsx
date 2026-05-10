@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { RefreshControl, ScrollView, Text, View } from "react-native";
+import { Alert, RefreshControl, ScrollView, Text, View } from "react-native";
 
+import TransactionSwipeRow from "@/components/TransactionSwipeRow";
 import { ScreenEmpty, ScreenError } from "@/components/ui/ScreenState";
 import { CERDIK_COLORS } from "@/constants/colors";
 import { transactionService, type Transaction } from "@/services/transactionService";
+import { useTransactionStore } from "@/stores/useTransactionStore";
 
 const formatRupiah = (amount: number) => `Rp ${new Intl.NumberFormat("id-ID").format(amount)}`;
 
@@ -27,6 +29,8 @@ const mapCategoryIcon = (category: string): keyof typeof Ionicons.glyphMap => {
 };
 
 export default function TransactionsScreen() {
+  const removeTransaction = useTransactionStore((s) => s.removeTransaction);
+
   const [list, setList] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,42 +96,63 @@ export default function TransactionsScreen() {
           const isExpense = tx.type === "expense";
           const isLast = idx === list.length - 1;
           return (
-            <View
+            <TransactionSwipeRow
               key={tx.id}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                paddingVertical: 12,
-                borderBottomWidth: isLast ? 0 : 1,
-                borderBottomColor: "#E2E8F0",
-              }}
+              onEdit={() =>
+                router.push({ pathname: "/edit-transaction", params: { transactionId: tx.id } } as any)
+              }
+              onDelete={() =>
+                Alert.alert("Hapus Transaksi", "Yakin mau hapus transaksi ini?", [
+                  { text: "Batal", style: "cancel" },
+                  {
+                    text: "Hapus",
+                    style: "destructive",
+                    onPress: () => {
+                      removeTransaction(tx.id)
+                        .then(() => load().catch(() => undefined))
+                        .catch(() => undefined);
+                    },
+                  },
+                ])
+              }
             >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, marginRight: 12 }}>
-                <View
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: isExpense ? "#FEE2E2" : "#DCFCE7",
-                  }}
-                >
-                  <Ionicons name={mapCategoryIcon(tx.category)} size={16} color={isExpense ? "#B91C1C" : "#166534"} />
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: 12,
+                  borderBottomWidth: isLast ? 0 : 1,
+                  borderBottomColor: "#E2E8F0",
+                  backgroundColor: CERDIK_COLORS.background,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, marginRight: 12 }}>
+                  <View
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: isExpense ? "#FEE2E2" : "#DCFCE7",
+                    }}
+                  >
+                    <Ionicons name={mapCategoryIcon(tx.category)} size={16} color={isExpense ? "#B91C1C" : "#166534"} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "700" }}>{tx.note || tx.category}</Text>
+                    <Text style={{ color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>
+                      {tx.category} • {formatDate(tx.date)}
+                    </Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "700" }}>{tx.note || tx.category}</Text>
-                  <Text style={{ color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>
-                    {tx.category} • {formatDate(tx.date)}
-                  </Text>
-                </View>
+                <Text style={{ color: isExpense ? "#DC2626" : "#16A34A", fontWeight: "700" }}>
+                  {isExpense ? "-" : "+"}
+                  {formatRupiah(tx.amount)}
+                </Text>
               </View>
-              <Text style={{ color: isExpense ? "#DC2626" : "#16A34A", fontWeight: "700" }}>
-                {isExpense ? "-" : "+"}
-                {formatRupiah(tx.amount)}
-              </Text>
-            </View>
+            </TransactionSwipeRow>
           );
         })
       )}

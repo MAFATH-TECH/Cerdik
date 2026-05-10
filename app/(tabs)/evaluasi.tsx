@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { Alert, Animated, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+
+import TransactionSwipeRow from "@/components/TransactionSwipeRow";
 import { BarChart, PieChart } from "react-native-gifted-charts";
 
 import { ScreenEmpty, ScreenError } from "@/components/ui/ScreenState";
@@ -30,6 +32,17 @@ function addDays(d: Date, days: number) {
   next.setDate(next.getDate() + days);
   return next;
 }
+
+const mapCategoryIcon = (category: string): keyof typeof Ionicons.glyphMap => {
+  if (category === "Transportasi") return "car-outline";
+  if (category === "Makan") return "restaurant-outline";
+  if (category === "Tabungan") return "wallet-outline";
+  if (category === "Menabung") return "save-outline";
+  if (category === "Beasiswa") return "school-outline";
+  if (category === "Uang Saku") return "cash-outline";
+  if (category === "Hadiah") return "gift-outline";
+  return "ellipsis-horizontal-circle-outline";
+};
 
 function getRangeForPeriod({
   period,
@@ -109,6 +122,7 @@ export default function EvaluasiScreen() {
     summary: storeSummary,
     selectedMonth,
     selectedYear,
+    removeTransaction,
   } = useTransactionStore();
   const { goals, loadGoals } = useGoalStore();
 
@@ -194,15 +208,21 @@ export default function EvaluasiScreen() {
 
     let totalIncome = 0;
     let totalExpense = 0;
+    let totalSaving = 0;
     const byCategoryMap = new Map<string, number>();
 
     for (const tx of periodTransactions) {
+      const cat = tx.category || "Lainnya";
+      if (cat === "Tabungan" || cat === "Menabung") {
+        totalSaving += tx.amount;
+      }
       if (tx.type === "income") {
         totalIncome += tx.amount;
       } else {
         totalExpense += tx.amount;
-        const key = tx.category || "Lainnya";
-        byCategoryMap.set(key, (byCategoryMap.get(key) ?? 0) + tx.amount);
+        if (cat !== "Menabung") {
+          byCategoryMap.set(cat, (byCategoryMap.get(cat) ?? 0) + tx.amount);
+        }
       }
     }
 
@@ -213,7 +233,7 @@ export default function EvaluasiScreen() {
     const net = totalIncome - totalExpense;
     const savingsPercentage = totalIncome > 0 ? (net / totalIncome) * 100 : 0;
 
-    return { totalIncome, totalExpense, net, byCategory, savingsPercentage };
+    return { totalIncome, totalExpense, net, totalSaving, byCategory, savingsPercentage };
   }, [period, periodTransactions, storeSummary]);
 
   const barData = useMemo(() => {
@@ -280,23 +300,65 @@ export default function EvaluasiScreen() {
     return data;
   }, [period, periodTransactions, selectedMonth, selectedYear]);
 
-  const pieData = useMemo(() => {
-    const totalExpense = summary.totalExpense;
-    if (totalExpense <= 0) return [];
+  const SAVING_SLICE_COLOR = "#43D9AD";
 
-    return summary.byCategory.map((item) => ({
+  const pieData = useMemo(() => {
+    const slices: { value: number; color: string; text: string }[] = summary.byCategory.map((item) => ({
       value: item.total,
       color: CATEGORY_COLORS[item.category] ?? "#888888",
       text: item.category,
     }));
-  }, [summary.totalExpense, summary.byCategory]);
+    if (summary.totalSaving > 0) {
+      slices.push({ value: summary.totalSaving, color: SAVING_SLICE_COLOR, text: "Tabungan" });
+    }
+    return slices;
+  }, [summary.byCategory, summary.totalSaving]);
 
   const donutCenterText = useMemo(() => {
-    if (summary.totalExpense <= 0 || summary.byCategory.length === 0) return "0%\nData";
-    const top = summary.byCategory[0];
-    const pct = (top.total / summary.totalExpense) * 100;
-    return `${pct.toFixed(0)}%\nTerbesar`;
-  }, [summary.totalExpense, summary.byCategory]);
+    if (pieData.length === 0) return "0%\nData";
+    const totalPie = pieData.reduce((s, x) => s + x.value, 0);
+    if (totalPie <= 0) return "0%\nData";
+    const top = [...pieData].sort((a, b) => b.value - a.value)[0];
+    const pct = (top.value / totalPie) * 100;
+    return `${pct.toFixed(0)}%\n${top.text}`;
+  }, [pieData]);
+
+  const savingSharePct =
+    summary.totalIncome > 0 ? (summary.totalSaving / summary.totalIncome) * 100 : 0;
+
+  const savingCardColors = useMemo(() => {
+    if (savingSharePct <= 0) {
+      return {
+        border: "#E2E8F0",
+        accent: CERDIK_COLORS.textSecondary,
+        message: "Belum ada tabungan bulan ini",
+      };
+    }
+    if (savingSharePct >= 20) {
+      return {
+        border: "#BBF7D0",
+        accent: "#15803D",
+        message: "Tabunganmu sudah ideal! 🎉",
+      };
+    }
+    if (savingSharePct >= 10) {
+      return {
+        border: "#FEF08A",
+        accent: "#CA8A04",
+        message: "Lumayan! Coba tingkatkan ke 20% ya",
+      };
+    }
+    return {
+      border: "#FECACA",
+      accent: "#DC2626",
+      message: "Yuk tingkatkan tabunganmu!",
+    };
+  }, [savingSharePct]);
+
+  const expenseCategoryTotal = useMemo(
+    () => summary.byCategory.reduce((s, x) => s + x.total, 0),
+    [summary.byCategory],
+  );
 
   const insights = useMemo(() => {
     const computed: string[] = [];
@@ -313,10 +375,13 @@ export default function EvaluasiScreen() {
     else if (savingRate === 0) computed.push("Pengeluaranmu sama persis dengan pemasukan. Coba sisihkan sedikit!");
     else computed.push("Pengeluaranmu melebihi pemasukan bulan ini. Yuk evaluasi!");
 
-    if (summary.byCategory.length > 0 && summary.totalExpense > 0) {
-      const top = summary.byCategory[0];
-      const pct = Math.round((top.total / summary.totalExpense) * 100);
-      computed.push(`Pengeluaran terbesar kamu di kategori ${top.category} (${pct}% dari total).`);
+    if (summary.byCategory.length > 0) {
+      const expenseCatSum = summary.byCategory.reduce((s, x) => s + x.total, 0);
+      if (expenseCatSum > 0) {
+        const top = summary.byCategory[0];
+        const pct = Math.round((top.total / expenseCatSum) * 100);
+        computed.push(`Pengeluaran terbesar kamu di kategori ${top.category} (${pct}% dari total kategori).`);
+      }
     }
 
     const activeGoals = goals.filter((g) => !g.isCompleted);
@@ -490,6 +555,34 @@ export default function EvaluasiScreen() {
         </View>
       </View>
 
+      <View
+        style={{
+          backgroundColor: "#FFFFFF",
+          borderRadius: 16,
+          padding: 14,
+          marginBottom: 14,
+          borderWidth: 2,
+          borderColor: savingCardColors.border,
+          shadowColor: "#000000",
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.06,
+          shadowRadius: 8,
+          elevation: 2,
+        }}
+      >
+        <Text style={{ fontSize: 12, color: CERDIK_COLORS.textSecondary, marginBottom: 4 }}>Ringkasan Tabungan</Text>
+        <Text style={{ fontSize: 14, fontWeight: "700", color: CERDIK_COLORS.textPrimary, marginBottom: 10 }}>
+          Total {periodLabel.toLowerCase()}
+        </Text>
+        <Text style={{ fontSize: 22, fontWeight: "800", color: CERDIK_COLORS.textPrimary, marginBottom: 6 }}>
+          {formatCurrency(summary.totalSaving)}
+        </Text>
+        <Text style={{ fontSize: 14, fontWeight: "700", color: savingCardColors.accent, marginBottom: 8 }}>
+          {savingSharePct.toFixed(1)}% dari pemasukan
+        </Text>
+        <Text style={{ fontSize: 13, color: savingCardColors.accent, lineHeight: 20 }}>{savingCardColors.message}</Text>
+      </View>
+
       <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 14 }}>
         <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
           Grafik {periodLabel}
@@ -510,48 +603,163 @@ export default function EvaluasiScreen() {
 
       <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 14 }}>
         <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>Pengeluaran per Kategori</Text>
+        <Text style={{ marginBottom: 10, fontSize: 12, color: CERDIK_COLORS.textSecondary }}>
+          Slice hijau (#43D9AD) = tabungan yang kamu catat (Tabungan + Menabung).
+        </Text>
         <View style={{ alignItems: "center", marginBottom: 12 }}>
-          <PieChart
-            data={pieData}
-            donut
-            radius={86}
-            innerRadius={58}
-            textColor={CERDIK_COLORS.textPrimary}
-            centerLabelComponent={() => (
-              <Text style={{ textAlign: "center", fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>{donutCenterText}</Text>
-            )}
-          />
+          {pieData.length === 0 ? (
+            <Text style={{ color: CERDIK_COLORS.textSecondary }}>Belum ada data untuk diagram.</Text>
+          ) : (
+            <PieChart
+              data={pieData}
+              donut
+              radius={86}
+              innerRadius={58}
+              textColor={CERDIK_COLORS.textPrimary}
+              centerLabelComponent={() => (
+                <Text style={{ textAlign: "center", fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>{donutCenterText}</Text>
+              )}
+            />
+          )}
         </View>
       </View>
 
       <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 14 }}>
         <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>Tabel Kategori Pengeluaran</Text>
 
-        {summary.byCategory.length === 0 ? (
+        {summary.byCategory.length === 0 && summary.totalSaving <= 0 ? (
           <Text style={{ color: CERDIK_COLORS.textSecondary }}>Tidak ada data pengeluaran.</Text>
         ) : (
-          summary.byCategory.map((item) => {
-            const pct = summary.totalExpense > 0 ? (item.total / summary.totalExpense) * 100 : 0;
-            const color = CATEGORY_COLORS[item.category] ?? "#888888";
-            return (
-              <View key={`table-${item.category}`} style={{ marginBottom: 14 }}>
+          <>
+            {summary.totalSaving > 0 ? (
+              <View key="table-tabungan" style={{ marginBottom: 14 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "600" }}>{item.category}</Text>
+                  <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "600" }}>Tabungan</Text>
                   <Text style={{ color: CERDIK_COLORS.textSecondary }}>
-                    {formatCurrency(item.total)} | {pct.toFixed(1)}%
+                    {formatCurrency(summary.totalSaving)} | {savingSharePct.toFixed(1)}% pemasukan
                   </Text>
                 </View>
                 <View style={{ marginTop: 6, height: 8, borderRadius: 999, backgroundColor: "#E2E8F0" }}>
                   <View
                     style={{
-                      width: progressBarWidth(pct) as any,
+                      width: progressBarWidth(Math.min(100, savingSharePct)) as any,
                       height: 8,
                       borderRadius: 999,
-                      backgroundColor: color,
+                      backgroundColor: SAVING_SLICE_COLOR,
                     }}
                   />
                 </View>
               </View>
+            ) : null}
+            {summary.byCategory.map((item) => {
+              const pct = expenseCategoryTotal > 0 ? (item.total / expenseCategoryTotal) * 100 : 0;
+              const color = CATEGORY_COLORS[item.category] ?? "#888888";
+              return (
+                <View key={`table-${item.category}`} style={{ marginBottom: 14 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "600" }}>{item.category}</Text>
+                    <Text style={{ color: CERDIK_COLORS.textSecondary }}>
+                      {formatCurrency(item.total)} | {pct.toFixed(1)}%
+                    </Text>
+                  </View>
+                  <View style={{ marginTop: 6, height: 8, borderRadius: 999, backgroundColor: "#E2E8F0" }}>
+                    <View
+                      style={{
+                        width: progressBarWidth(pct) as any,
+                        height: 8,
+                        borderRadius: 999,
+                        backgroundColor: color,
+                      }}
+                    />
+                  </View>
+                </View>
+              );
+            })}
+          </>
+        )}
+      </View>
+
+      <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+        <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
+          Daftar Transaksi (periode)
+        </Text>
+        {periodTransactions.length === 0 ? (
+          <Text style={{ color: CERDIK_COLORS.textSecondary }}>Tidak ada transaksi di periode ini.</Text>
+        ) : (
+          periodTransactions.map((tx, idx) => {
+            const isExpense = tx.type === "expense";
+            const isLast = idx === periodTransactions.length - 1;
+            return (
+              <TransactionSwipeRow
+                key={tx.id}
+                onEdit={() =>
+                  router.push({ pathname: "/edit-transaction", params: { transactionId: tx.id } } as any)
+                }
+                onDelete={() =>
+                  Alert.alert("Hapus Transaksi", "Yakin mau hapus transaksi ini?", [
+                    { text: "Batal", style: "cancel" },
+                    {
+                      text: "Hapus",
+                      style: "destructive",
+                      onPress: () => {
+                        removeTransaction(tx.id)
+                          .then(() => {
+                            fetchPeriodTransactions().catch(() => undefined);
+                            loadTransactions().catch(() => undefined);
+                            loadSummary().catch(() => undefined);
+                          })
+                          .catch(() => undefined);
+                      },
+                    },
+                  ])
+                }
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingVertical: 10,
+                    borderBottomWidth: isLast ? 0 : 1,
+                    borderBottomColor: "#EEF2F7",
+                    backgroundColor: "#FFFFFF",
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, marginRight: 10 }}>
+                    <View
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 17,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: isExpense ? "#FEE2E2" : "#DCFCE7",
+                      }}
+                    >
+                      <Ionicons
+                        name={mapCategoryIcon(tx.category)}
+                        size={16}
+                        color={isExpense ? "#B91C1C" : "#166534"}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "600" }}>{tx.note || tx.category}</Text>
+                      <Text style={{ color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>
+                        {tx.category} •{" "}
+                        {new Date(tx.date).toLocaleDateString("id-ID", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: isExpense ? "#DC2626" : "#16A34A", fontWeight: "700" }}>
+                    {isExpense ? "-" : "+"}
+                    {formatCurrency(tx.amount)}
+                  </Text>
+                </View>
+              </TransactionSwipeRow>
             );
           })
         )}

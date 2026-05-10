@@ -39,6 +39,26 @@ const getAuthedUserId = async () => {
   return user.id;
 };
 
+function mapTransactionRow(row: any): Transaction {
+  return {
+    id: row.id,
+    type: row.type,
+    amount: typeof row.amount === "number" ? row.amount : Number(row.amount),
+    category: row.category,
+    note: row.note ?? "",
+    date: row.date,
+    createdAt: row.created_at,
+  };
+}
+
+export type UpdateTransactionInput = {
+  type: TransactionType;
+  amount: number;
+  category: string;
+  note?: string;
+  date: string;
+};
+
 export const transactionService = {
   async addTransaction(data: AddTransactionInput): Promise<Transaction> {
     const userId = await getAuthedUserId();
@@ -59,16 +79,45 @@ export const transactionService = {
       .single();
 
     if (error) throw error;
-    const mapped = inserted as any;
-    return {
-      id: mapped.id,
-      type: mapped.type,
-      amount: typeof mapped.amount === "number" ? mapped.amount : Number(mapped.amount),
-      category: mapped.category,
-      note: mapped.note ?? "",
-      date: mapped.date,
-      createdAt: mapped.created_at,
+    return mapTransactionRow(inserted);
+  },
+
+  async getTransactionById(id: string): Promise<Transaction | null> {
+    const userId = await getAuthedUserId();
+
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("id, type, amount, category, note, date, created_at")
+      .eq("id", id)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return null;
+    return mapTransactionRow(data);
+  },
+
+  async updateTransaction(id: string, data: UpdateTransactionInput): Promise<Transaction> {
+    const userId = await getAuthedUserId();
+
+    const payload = {
+      type: data.type,
+      amount: data.amount,
+      category: data.category,
+      note: data.note ?? null,
+      date: toDateOnly(data.date),
     };
+
+    const { data: updated, error } = await supabase
+      .from("transactions")
+      .update(payload)
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select("id, type, amount, category, note, date, created_at")
+      .single();
+
+    if (error) throw error;
+    return mapTransactionRow(updated);
   },
 
   async getTransactions(options: { month?: number; year?: number } = {}): Promise<Transaction[]> {
@@ -90,15 +139,7 @@ export const transactionService = {
     const { data, error } = await query;
     if (error) throw error;
 
-    return (data ?? []).map((row: any) => ({
-      id: row.id,
-      type: row.type,
-      amount: typeof row.amount === "number" ? row.amount : Number(row.amount),
-      category: row.category,
-      note: row.note ?? "",
-      date: row.date,
-      createdAt: row.created_at,
-    }));
+    return (data ?? []).map(mapTransactionRow);
   },
 
   async getTransactionsInRange(options: { from: Date; to: Date }): Promise<Transaction[]> {
@@ -126,21 +167,14 @@ export const transactionService = {
 
     if (error) throw error;
 
-    return (data ?? []).map((row: any) => ({
-      id: row.id,
-      type: row.type,
-      amount: typeof row.amount === "number" ? row.amount : Number(row.amount),
-      category: row.category,
-      note: row.note ?? "",
-      date: row.date,
-      createdAt: row.created_at,
-    }));
+    return (data ?? []).map(mapTransactionRow);
   },
 
   async getTransactionSummary(month: number, year: number): Promise<{
     totalIncome: number;
     totalExpense: number;
     net: number;
+    totalSaving: number;
     byCategory: { category: string; total: number }[];
   }> {
     const userId = await getAuthedUserId();
@@ -163,27 +197,37 @@ export const transactionService = {
 
     let totalIncome = 0;
     let totalExpense = 0;
+    let totalSaving = 0;
     const byCategoryMap = new Map<string, number>();
 
     for (const row of rows) {
       const amount = typeof row.amount === "number" ? row.amount : Number(row.amount);
+      const category = row.category ?? "Lainnya";
+
+      if (category === "Tabungan" || category === "Menabung") {
+        totalSaving += amount;
+      }
+
       if (row.type === "income") {
         totalIncome += amount;
       } else {
         totalExpense += amount;
-        const category = row.category ?? "Lainnya";
-        byCategoryMap.set(category, (byCategoryMap.get(category) ?? 0) + amount);
+        // Menabung dipisah di donut — tidak digabung ke breakdown pengeluaran biasa
+        if (category !== "Menabung") {
+          byCategoryMap.set(category, (byCategoryMap.get(category) ?? 0) + amount);
+        }
       }
     }
 
     const byCategory = [...byCategoryMap.entries()]
       .sort((a, b) => b[1] - a[1])
-      .map(([category, total]) => ({ category, total }));
+      .map(([cat, total]) => ({ category: cat, total }));
 
     return {
       totalIncome,
       totalExpense,
       net: totalIncome - totalExpense,
+      totalSaving,
       byCategory,
     };
   },
@@ -202,6 +246,15 @@ export const transactionService = {
     return Array.isArray(data) ? data.length > 0 : false;
   },
 
+  async resetAllTransactions(): Promise<boolean> {
+    const userId = await getAuthedUserId();
+
+    const { error } = await supabase.from("transactions").delete().eq("user_id", userId);
+
+    if (error) throw error;
+    return true;
+  },
+
   async getRecentTransactions(limit: number = 5): Promise<Transaction[]> {
     const userId = await getAuthedUserId();
 
@@ -214,15 +267,7 @@ export const transactionService = {
 
     if (error) throw error;
 
-    return (data ?? []).map((row: any) => ({
-      id: row.id,
-      type: row.type,
-      amount: typeof row.amount === "number" ? row.amount : Number(row.amount),
-      category: row.category,
-      note: row.note ?? "",
-      date: row.date,
-      createdAt: row.created_at,
-    }));
+    return (data ?? []).map(mapTransactionRow);
   },
 };
 

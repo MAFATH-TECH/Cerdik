@@ -10,15 +10,32 @@ type SummaryCardProps = {
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   trend: string;
+  /** true = hijau & panah naik (baik untuk kartu ini); false = merah & panah turun */
+  trendUp?: boolean;
+  /** Bulan lalu belum ada transaksi — tampil "Data baru", netral */
+  trendIsNewData?: boolean;
 };
 
 const rupiahFormatter = new Intl.NumberFormat("id-ID");
 const formatRupiah = (amount: number) => `Rp ${rupiahFormatter.format(Math.round(amount))}`;
 
-export default function SummaryCard({ title, amountValue, icon, color, trend }: SummaryCardProps) {
-  const isPositiveTrend = trend.trim().startsWith("+");
-  const trendColor = isPositiveTrend ? "#16A34A" : "#EF4444";
-  const trendIcon = isPositiveTrend ? "trending-up" : "trending-down";
+export default function SummaryCard({
+  title,
+  amountValue,
+  icon,
+  color,
+  trend,
+  trendUp,
+  trendIsNewData,
+}: SummaryCardProps) {
+  const isNew = trendIsNewData === true || trend.trim() === "Data baru";
+  const up = trendUp ?? trend.trim().startsWith("+");
+  const trendColor = isNew ? CERDIK_COLORS.textSecondary : up ? "#16A34A" : "#EF4444";
+  const trendIcon: keyof typeof Ionicons.glyphMap = isNew
+    ? "ellipse-outline"
+    : up
+      ? "arrow-up"
+      : "arrow-down";
 
   const animated = useRef(new Animated.Value(0)).current;
   const [displayValue, setDisplayValue] = useState(0);

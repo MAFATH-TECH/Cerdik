@@ -1,6 +1,9 @@
+import "react-native-gesture-handler";
+
 import { router, Stack } from "expo-router";
 import { useEffect, useRef } from "react";
 import { Alert, AppState, AppStateStatus, StatusBar } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as Updates from "expo-updates";
 
@@ -78,6 +81,7 @@ export default function RootLayout() {
   }, [loadStoredAuth, logout, resetGoalState, resetTransactionState, syncSession]);
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider>
       <StatusBar barStyle="dark-content" />
       <Stack
@@ -105,7 +109,9 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="profile" options={{ title: "Pengaturan" }} />
         <Stack.Screen name="transactions" options={{ title: "Semua Transaksi" }} />
+        <Stack.Screen name="edit-transaction" options={{ title: "Edit Transaksi" }} />
       </Stack>
     </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

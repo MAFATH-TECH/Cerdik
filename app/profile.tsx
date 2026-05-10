@@ -1,6 +1,7 @@
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
+import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
 
 import CerdikButton from "@/components/ui/CerdikButton";
 import CerdikCard from "@/components/ui/CerdikCard";
@@ -9,11 +10,14 @@ import { userSettingsService } from "@/services/userSettingsService";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useGoalStore } from "@/stores/useGoalStore";
 import { useTransactionStore } from "@/stores/useTransactionStore";
+import { displayPhone } from "@/utils/phoneValidator";
 
 export default function ProfileScreen() {
   const { user, updateProfile, logout, isLoading } = useAuthStore();
   const resetTransactionState = useTransactionStore((s) => s.resetState);
+  const resetTransactions = useTransactionStore((s) => s.resetTransactions);
   const resetGoalState = useGoalStore((s) => s.resetState);
+  const [resettingTx, setResettingTx] = useState(false);
   const [name, setName] = useState(user?.name ?? "");
   const [kelas, setKelas] = useState(user?.kelas ?? "");
   const [sekolah, setSekolah] = useState(user?.sekolah ?? "");
@@ -75,6 +79,39 @@ export default function ProfileScreen() {
     Alert.alert("Export Data", "Coming soon");
   };
 
+  const showSecondConfirmation = () => {
+    Alert.alert(
+      "🗑️ Konfirmasi Terakhir",
+      "Kamu yakin ingin menghapus SEMUA transaksi?\n\nTindakan ini tidak dapat dibatalkan.",
+      [
+        { text: "Tidak, Batalkan", style: "cancel" },
+        {
+          text: "Ya, Hapus Semua",
+          style: "destructive",
+          onPress: () => {
+            void handleReset();
+          },
+        },
+      ],
+    );
+  };
+
+  const handleReset = async () => {
+    try {
+      setResettingTx(true);
+      await resetTransactions();
+      Alert.alert(
+        "✅ Berhasil",
+        "Semua transaksi berhasil direset. Saldo kamu sekarang Rp 0.",
+        [{ text: "OK" }],
+      );
+    } catch {
+      Alert.alert("Gagal", "Reset transaksi gagal. Coba lagi.", [{ text: "OK" }]);
+    } finally {
+      setResettingTx(false);
+    }
+  };
+
   const handleLogout = () => {
     Alert.alert("Keluar Akun", "Yakin ingin logout dari CERDIK?", [
       { text: "Batal", style: "cancel" },
@@ -124,6 +161,11 @@ export default function ProfileScreen() {
         <Text style={{ fontSize: 18, fontWeight: "800", color: CERDIK_COLORS.textPrimary }}>Pengaturan</Text>
         <Text style={{ marginTop: 4, color: CERDIK_COLORS.textSecondary }}>CERDIK v1.0.0</Text>
         <Text style={{ marginTop: 4, color: CERDIK_COLORS.textSecondary }}>{user?.email ?? "-"}</Text>
+        {user?.phone ? (
+          <Text style={{ marginTop: 4, color: CERDIK_COLORS.textSecondary }}>
+            HP: {displayPhone(user.phone)}
+          </Text>
+        ) : null}
       </View>
 
       <CerdikCard style={{ marginBottom: 12 }}>
@@ -255,6 +297,46 @@ export default function ProfileScreen() {
           />
         </View>
       </View>
+
+      <View style={{ height: 1, backgroundColor: "#E2E8F0", marginVertical: 18 }} />
+
+      <Pressable
+        onPress={() =>
+          Alert.alert(
+            "⚠️ Reset Semua Transaksi",
+            "Semua data transaksi kamu akan dihapus dan saldo akan kembali ke Rp 0.\n\nData yang dihapus tidak bisa dikembalikan!",
+            [
+              { text: "Batal", style: "cancel" },
+              {
+                text: "Lanjutkan",
+                style: "destructive",
+                onPress: () => showSecondConfirmation(),
+              },
+            ],
+          )
+        }
+        disabled={resettingTx}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 10,
+          height: 52,
+          borderRadius: 16,
+          marginBottom: 12,
+          borderWidth: 1.5,
+          borderColor: "#DC2626",
+          backgroundColor: "#FFFFFF",
+          opacity: resettingTx ? 0.65 : 1,
+        }}
+      >
+        {resettingTx ? (
+          <ActivityIndicator color="#DC2626" />
+        ) : (
+          <Ionicons name="refresh-outline" size={22} color="#DC2626" />
+        )}
+        <Text style={{ fontWeight: "900", color: "#DC2626", fontSize: 15 }}>Reset Semua Transaksi</Text>
+      </Pressable>
 
       <CerdikButton title="Logout" onPress={handleLogout} variant="danger" />
     </ScrollView>

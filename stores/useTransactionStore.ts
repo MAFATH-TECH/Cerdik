@@ -1,6 +1,11 @@
 import { create } from "zustand";
 
-import { transactionService, type Transaction as ServiceTransaction, type TransactionType } from "@/services/transactionService";
+import {
+  transactionService,
+  type Transaction as ServiceTransaction,
+  type TransactionType,
+  type UpdateTransactionInput,
+} from "@/services/transactionService";
 
 export type Transaction = ServiceTransaction;
 
@@ -8,6 +13,7 @@ export type TransactionSummary = {
   totalIncome: number;
   totalExpense: number;
   net: number;
+  totalSaving: number;
   byCategory: { category: string; total: number }[];
 };
 
@@ -26,14 +32,25 @@ type TransactionState = {
     note: string;
     date: string | Date;
   }) => Promise<void>;
+  editTransaction: (id: string, data: UpdateTransactionInput) => Promise<void>;
+  removeTransaction: (id: string) => Promise<void>;
+  /** @deprecated gunakan removeTransaction */
   deleteTransaction: (id: string) => Promise<void>;
+  resetTransactions: () => Promise<void>;
   loadSummary: () => Promise<void>;
   setSelectedPeriod: (month: number, year: number) => Promise<void>;
   resetState: () => void;
 };
 
-const getNowMonth = () => new Date().getMonth() + 1; // 1-12
+const getNowMonth = () => new Date().getMonth() + 1;
 const getNowYear = () => new Date().getFullYear();
+
+async function reloadMonthState(get: () => TransactionState) {
+  const { selectedMonth, selectedYear } = get();
+  const list = await transactionService.getTransactions({ month: selectedMonth, year: selectedYear });
+  const summary = await transactionService.getTransactionSummary(selectedMonth, selectedYear);
+  return { list, summary };
+}
 
 export const useTransactionStore = create<TransactionState>((set, get) => ({
   transactions: [],
@@ -61,11 +78,7 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       await transactionService.addTransaction(data);
-
-      const { selectedMonth, selectedYear } = get();
-      const list = await transactionService.getTransactions({ month: selectedMonth, year: selectedYear });
-      const summary = await transactionService.getTransactionSummary(selectedMonth, selectedYear);
-
+      const { list, summary } = await reloadMonthState(get);
       set({ transactions: list, summary, isLoading: false, error: null });
     } catch (error) {
       set({
@@ -76,21 +89,53 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
     }
   },
 
-  deleteTransaction: async (id) => {
+  editTransaction: async (id, data) => {
+    set({ isLoading: true, error: null });
+    try {
+      await transactionService.updateTransaction(id, data);
+      const { list, summary } = await reloadMonthState(get);
+      set({ transactions: list, summary, isLoading: false, error: null });
+    } catch (error) {
+      set({
+        isLoading: false,
+        error: error instanceof Error ? error.message : "Gagal memperbarui transaksi.",
+      });
+      throw error;
+    }
+  },
+
+  removeTransaction: async (id) => {
     set({ isLoading: true, error: null });
     try {
       const ok = await transactionService.deleteTransaction(id);
       if (!ok) throw new Error("Transaksi tidak ditemukan atau tidak bisa dihapus.");
 
-      const nextList = get().transactions.filter((t) => t.id !== id);
-      const { selectedMonth, selectedYear } = get();
-      const summary = await transactionService.getTransactionSummary(selectedMonth, selectedYear);
-
-      set({ transactions: nextList, summary, isLoading: false, error: null });
+      const { list, summary } = await reloadMonthState(get);
+      set({ transactions: list, summary, isLoading: false, error: null });
     } catch (error) {
       set({
         isLoading: false,
         error: error instanceof Error ? error.message : "Gagal menghapus transaksi.",
+      });
+      throw error;
+    }
+  },
+
+  deleteTransaction: async (id) => {
+    await get().removeTransaction(id);
+  },
+
+  resetTransactions: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      await transactionService.resetAllTransactions();
+      set({ transactions: [], summary: null, isLoading: false, error: null });
+      const { list, summary } = await reloadMonthState(get);
+      set({ transactions: list, summary, isLoading: false, error: null });
+    } catch (error) {
+      set({
+        isLoading: false,
+        error: error instanceof Error ? error.message : "Gagal mereset transaksi.",
       });
       throw error;
     }
