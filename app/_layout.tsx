@@ -1,6 +1,8 @@
 import { router, Stack } from "expo-router";
 import { useEffect, useRef } from "react";
-import { AppState, AppStateStatus, StatusBar } from "react-native";
+import { Alert, AppState, AppStateStatus, StatusBar } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import * as Updates from "expo-updates";
 
 import { CERDIK_COLORS } from "../constants/colors";
 import { isSupabaseConfigured, supabase } from "../services/supabase";
@@ -17,6 +19,22 @@ export default function RootLayout() {
   const resetGoalState = useGoalStore((s) => s.resetState);
 
   useEffect(() => {
+    const checkForUpdates = async () => {
+      try {
+        if (!Updates.isEmbeddedLaunch) return;
+        const update = await Updates.checkForUpdateAsync();
+        if (!update.isAvailable) return;
+        await Updates.fetchUpdateAsync();
+        Alert.alert("Update Tersedia! 🎉", "CERDIK telah diperbarui. Restart sekarang?", [
+          { text: "Nanti", style: "cancel" },
+          { text: "Restart", onPress: () => Updates.reloadAsync() },
+        ]);
+      } catch {
+        // ignore
+      }
+    };
+
+    checkForUpdates().catch(() => undefined);
     loadStoredAuth();
 
     const subscription = isSupabaseConfigured
@@ -60,7 +78,7 @@ export default function RootLayout() {
   }, [loadStoredAuth, logout, resetGoalState, resetTransactionState, syncSession]);
 
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar barStyle="dark-content" />
       <Stack
         initialRouteName="index"
@@ -88,6 +106,6 @@ export default function RootLayout() {
         <Stack.Screen name="profile" options={{ title: "Pengaturan" }} />
         <Stack.Screen name="transactions" options={{ title: "Semua Transaksi" }} />
       </Stack>
-    </>
+    </SafeAreaProvider>
   );
 }

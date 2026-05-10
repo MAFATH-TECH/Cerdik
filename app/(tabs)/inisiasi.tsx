@@ -28,6 +28,7 @@ const QUICK_QUESTIONS = [
   "Bantu buat rencana menabung",
   "Apa pengeluaran terborosku?",
 ];
+const AI_ENABLED = false;
 
 const formatRupiah = (value: number) => `Rp ${new Intl.NumberFormat("id-ID").format(value)}`;
 const getTxDateValue = (tx: Partial<Transaction>) => tx.date ?? tx.createdAt ?? new Date().toISOString();
@@ -136,6 +137,23 @@ export default function InisiasiScreen() {
   const handleSend = async (messageText = inputText) => {
     const trimmed = messageText.trim();
     if (!trimmed || isTyping || blockingError) return;
+
+    if (!AI_ENABLED) {
+      const userMessage: ChatMessage = {
+        id: `user-${Date.now()}`,
+        sender: "user",
+        text: trimmed,
+      };
+      const fallbackMessage: ChatMessage = {
+        id: `ai-${Date.now()}-fallback`,
+        sender: "ai",
+        text: "Fitur AI akan segera hadir! Sementara gunakan fitur lain dulu ya 😊",
+      };
+      setMessages((prev) => [...prev, userMessage, fallbackMessage]);
+      setInputText("");
+      scrollToBottom();
+      return;
+    }
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,

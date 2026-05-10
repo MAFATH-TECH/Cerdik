@@ -4,7 +4,7 @@ import { CERDIK_COLORS } from "@/constants/colors";
 
 export function ScreenLoading({ lines = 6 }: { lines?: number }) {
   return (
-    <View style={{ padding: 20 }}>
+    <View style={{ flex: 1, width: "100%", backgroundColor: CERDIK_COLORS.background, padding: 20 }}>
       {Array.from({ length: lines }).map((_, i) => (
         <View
           key={i}

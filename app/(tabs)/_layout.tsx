@@ -17,7 +17,9 @@ const getTabIcon = (routeName: string, focused: boolean): TabIconName => {
 export default function TabLayout() {
   return (
     <Tabs
+      detachInactiveScreens={false}
       screenOptions={({ route }) => ({
+        sceneStyle: { backgroundColor: CERDIK_COLORS.background },
         headerStyle: { backgroundColor: CERDIK_COLORS.card },
         headerTintColor: CERDIK_COLORS.textPrimary,
         headerTitleStyle: { fontWeight: "700" },
@@ -92,7 +94,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen name="evaluasi" options={{ title: "Evaluasi" }} />
-      <Tabs.Screen name="rencanakan" options={{ title: "Target" }} />
+      <Tabs.Screen
+        name="rencanakan"
+        options={{
+          title: "Target",
+          /** Cegah layar hitam saat pindah tab di iOS + react-native-screens / Expo Go */
+          freezeOnBlur: false,
+          lazy: false,
+        }}
+      />
       <Tabs.Screen name="inisiasi" options={{ title: "AI Saran" }} />
     </Tabs>
   );

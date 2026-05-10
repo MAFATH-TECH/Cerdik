@@ -69,18 +69,16 @@ export const goalService = {
     if (userError) throw userError;
     if (!user?.id) throw new Error("Sesi login tidak ditemukan.");
 
-    const query = supabase
+    let q = supabase
       .from("goals")
       .select("id, name, emoji, target_amount, current_amount, deadline, note, is_completed, created_at, completed_at")
       .eq("user_id", user.id);
 
     if (!includeCompleted) {
-      query.eq("is_completed", false);
+      q = q.eq("is_completed", false);
     }
 
-    query.order("deadline", { ascending: true });
-
-    const { data, error } = await query;
+    const { data, error } = await q.order("deadline", { ascending: true });
     if (error) throw error;
 
     return (data ?? []).map(mapGoal);
@@ -156,32 +154,58 @@ export const goalService = {
   },
 
   getGoalProgress(goal: Goal): { percentage: number; daysLeft: number; dailyNeeded: number } {
-    const percentage = goal.targetAmount > 0 ? Math.min(100, (goal.currentAmount / goal.targetAmount) * 100) : 0;
+    const target = Number.isFinite(goal.targetAmount) && goal.targetAmount > 0 ? goal.targetAmount : 0;
+    const current = Number.isFinite(goal.currentAmount) ? Math.max(0, goal.currentAmount) : 0;
+
+    const percentage = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+    const safePct = Number.isFinite(percentage) ? percentage : 0;
 
     const today = new Date();
+    const startOfTodayMs = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
     const deadlineDate = new Date(goal.deadline);
-    const diffMs = deadlineDate.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-    const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    const deadlineMs = deadlineDate.getTime();
 
-    if (goal.isCompleted || daysLeft === 0) {
-      return { percentage, daysLeft, dailyNeeded: 0 };
+    let daysLeft = 0;
+    if (!Number.isFinite(deadlineMs)) {
+      daysLeft = 0;
+    } else {
+      const diffMs = deadlineMs - startOfTodayMs;
+      const rawDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      daysLeft = Number.isFinite(rawDays) ? Math.max(0, rawDays) : 0;
     }
 
-    const remaining = Math.max(0, goal.targetAmount - goal.currentAmount);
+    if (goal.isCompleted || daysLeft <= 0) {
+      return { percentage: safePct, daysLeft, dailyNeeded: 0 };
+    }
+
+    const remaining = Math.max(0, target - current);
     const dailyNeeded = remaining / daysLeft;
 
-    return { percentage, daysLeft, dailyNeeded };
+    return {
+      percentage: safePct,
+      daysLeft,
+      dailyNeeded: Number.isFinite(dailyNeeded) ? dailyNeeded : 0,
+    };
   },
 };
 
 function mapGoal(row: any): Goal {
+  const tn = typeof row.target_amount === "number" ? row.target_amount : Number(row.target_amount);
+  const cn = typeof row.current_amount === "number" ? row.current_amount : Number(row.current_amount);
+
+  const targetAmount = Number.isFinite(tn) && tn >= 0 ? tn : 0;
+  const currentAmount = Number.isFinite(cn) && cn >= 0 ? cn : 0;
+
+  const deadlineRaw = row.deadline instanceof Date ? row.deadline.toISOString().slice(0, 10) : String(row.deadline ?? "");
+  const deadline = deadlineRaw.includes("T") ? deadlineRaw.split("T")[0] ?? deadlineRaw : deadlineRaw;
+
   return {
     id: row.id,
-    name: row.name,
-    emoji: row.emoji,
-    targetAmount: typeof row.target_amount === "number" ? row.target_amount : Number(row.target_amount),
-    currentAmount: typeof row.current_amount === "number" ? row.current_amount : Number(row.current_amount),
-    deadline: row.deadline instanceof Date ? row.deadline.toISOString() : String(row.deadline),
+    name: row.name ?? "",
+    emoji: row.emoji ?? "🎯",
+    targetAmount,
+    currentAmount,
+    deadline,
     note: row.note,
     isCompleted: Boolean(row.is_completed),
     createdAt: row.created_at,

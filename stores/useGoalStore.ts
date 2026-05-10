@@ -24,7 +24,7 @@ export const useGoalStore = create<GoalState>((set, get) => ({
   loadGoals: async () => {
     set({ isLoading: true, error: null });
     try {
-      const goals = await goalService.getGoals(false);
+      const goals = await goalService.getGoals(true);
       set({ goals, isLoading: false, error: null });
     } catch (error) {
       set({
