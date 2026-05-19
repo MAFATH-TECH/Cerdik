@@ -6,7 +6,9 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from "react-
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import DraggableEdukasiFab from "@/components/DraggableEdukasiFab";
 import TransactionSwipeRow from "@/components/TransactionSwipeRow";
+import CerdikLogo from "@/components/ui/CerdikLogo";
 import SummaryCard from "@/components/ui/SummaryCard";
 import { useEarlyWarning } from "@/hooks/useEarlyWarning";
 import { userSettingsService } from "@/services/userSettingsService";
@@ -203,17 +205,21 @@ export default function HomeScreen() {
   const weeklyExceeded = Math.max(0, weeklyExpense - weeklyExpenseLimit);
 
   return (
+    <View style={{ flex: 1, position: "relative" }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: CERDIK_COLORS.background }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
     >
       <View style={{ marginBottom: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <View>
+        <View style={{ flexDirection: "row", alignItems: "center", flex: 1, marginRight: 12 }}>
+          <CerdikLogo size={44} style={{ marginRight: 12 }} />
+          <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 26, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
             Halo, {studentName}!
           </Text>
           <Text style={{ marginTop: 4, color: CERDIK_COLORS.textSecondary }}>{todayLabel}</Text>
+          </View>
         </View>
         <Pressable
           onPress={() => router.push("/profile")}
@@ -238,16 +244,16 @@ export default function HomeScreen() {
             padding: 14,
             backgroundColor:
               topWarning.severity === "high"
-                ? "#FEE2E2"
+                ? CERDIK_COLORS.surfaceDanger
                 : topWarning.severity === "medium"
-                  ? "#FFF4D6"
-                  : "#DCFCE7",
+                  ? CERDIK_COLORS.surfaceWarning
+                  : CERDIK_COLORS.surfaceSuccess,
             borderColor:
               topWarning.severity === "high"
-                ? "#FF6B6B"
+                ? CERDIK_COLORS.danger
                 : topWarning.severity === "medium"
-                  ? "#FFB347"
-                  : "#22C55E",
+                  ? CERDIK_COLORS.warning
+                  : CERDIK_COLORS.success,
             borderWidth: 1,
           }}
         >
@@ -298,7 +304,7 @@ export default function HomeScreen() {
             title="Pemasukan"
             amountValue={totalIncome}
             icon="arrow-up-circle"
-            color="#16A34A"
+            color={CERDIK_COLORS.income}
             trend={monthShareTrend.incomeLabel}
             trendUp
             trendNeutral={monthShareTrend.neutral}
@@ -309,7 +315,7 @@ export default function HomeScreen() {
             title="Pengeluaran"
             amountValue={totalExpense}
             icon="arrow-down-circle"
-            color="#EF4444"
+            color={CERDIK_COLORS.expense}
             trend={monthShareTrend.expenseLabel}
             trendUp={false}
             trendNeutral={monthShareTrend.neutral}
@@ -320,7 +326,7 @@ export default function HomeScreen() {
             title="Tabungan"
             amountValue={totalSavings}
             icon="wallet"
-            color="#2563EB"
+            color={CERDIK_COLORS.accent}
             trend={monthShareTrend.savingLabel}
             trendUp
             trendNeutral={monthShareTrend.neutral}
@@ -362,7 +368,7 @@ export default function HomeScreen() {
             <Text style={{ marginTop: 8, color: CERDIK_COLORS.textSecondary }}>
               Minggu ini: {formatRupiah(weeklyExpense)} / {formatRupiah(weeklyExpenseLimit)}
             </Text>
-            <Text style={{ marginTop: 4, color: weeklyExceeded > 0 ? "#DC2626" : CERDIK_COLORS.textSecondary, fontSize: 12, fontWeight: "600" }}>
+            <Text style={{ marginTop: 4, color: weeklyExceeded > 0 ? CERDIK_COLORS.danger : CERDIK_COLORS.textSecondary, fontSize: 12, fontWeight: "600" }}>
               {weeklyExceeded > 0 ? `Melebihi limit: ${formatRupiah(weeklyExceeded)}` : `Sisa limit: ${formatRupiah(weeklyRemaining)}`}
             </Text>
             <View style={{ marginTop: 10, height: 10, borderRadius: 999, backgroundColor: "#E2E8F0" }}>
@@ -371,7 +377,8 @@ export default function HomeScreen() {
                   width: `${weeklyUsagePct}%`,
                   height: 10,
                   borderRadius: 999,
-                  backgroundColor: weeklyUsagePct >= 100 ? "#DC2626" : weeklyUsagePct >= 80 ? "#F59E0B" : "#16A34A",
+                  backgroundColor:
+                    weeklyUsagePct >= 100 ? CERDIK_COLORS.danger : weeklyUsagePct >= 80 ? CERDIK_COLORS.warning : CERDIK_COLORS.success,
                 }}
               />
             </View>
@@ -475,13 +482,13 @@ export default function HomeScreen() {
                       borderRadius: 17,
                       alignItems: "center",
                       justifyContent: "center",
-                      backgroundColor: isExpense ? "#FEE2E2" : "#DCFCE7",
+                      backgroundColor: isExpense ? CERDIK_COLORS.surfaceDanger : CERDIK_COLORS.surfaceSuccess,
                     }}
                   >
                     <Ionicons
                       name={mapCategoryIcon(tx.category)}
                       size={16}
-                      color={isExpense ? "#B91C1C" : "#166534"}
+                      color={isExpense ? CERDIK_COLORS.expense : CERDIK_COLORS.income}
                     />
                   </View>
                   <View>
@@ -491,7 +498,7 @@ export default function HomeScreen() {
                     <Text style={{ color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>{formatDate(tx.createdAt)}</Text>
                   </View>
                 </View>
-                <Text style={{ color: isExpense ? "#DC2626" : "#16A34A", fontWeight: "700" }}>
+                <Text style={{ color: isExpense ? CERDIK_COLORS.expense : CERDIK_COLORS.income, fontWeight: "700" }}>
                   {isExpense ? "-" : "+"}
                   {formatRupiah(tx.amount).replace("Rp ", "Rp ")}
                 </Text>
@@ -599,5 +606,8 @@ export default function HomeScreen() {
         )}
       </View>
     </ScrollView>
+
+    <DraggableEdukasiFab />
+    </View>
   );
 }

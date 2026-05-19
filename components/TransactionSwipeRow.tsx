@@ -3,6 +3,8 @@ import React, { type ReactNode, useRef } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 
+import { CERDIK_COLORS } from "@/constants/colors";
+
 type Props = {
   children: ReactNode;
   onEdit: () => void;
@@ -17,7 +19,7 @@ export default function TransactionSwipeRow({ children, onEdit, onDelete }: Prop
   const renderRightActions = () => (
     <View style={styles.actions}>
       <Pressable
-        style={[styles.btn, { backgroundColor: "#2563EB" }]}
+        style={[styles.btn, { backgroundColor: CERDIK_COLORS.primary }]}
         onPress={() => {
           swipeRef.current?.close();
           onEdit();
@@ -26,7 +28,7 @@ export default function TransactionSwipeRow({ children, onEdit, onDelete }: Prop
         <Ionicons name="pencil" size={22} color="#FFFFFF" />
       </Pressable>
       <Pressable
-        style={[styles.btn, { backgroundColor: "#DC2626" }]}
+        style={[styles.btn, { backgroundColor: CERDIK_COLORS.danger }]}
         onPress={() => {
           swipeRef.current?.close();
           onDelete();
@@ -46,7 +48,7 @@ export default function TransactionSwipeRow({ children, onEdit, onDelete }: Prop
 
 const styles = StyleSheet.create({
   rowWrap: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: CERDIK_COLORS.card,
   },
   actions: {
     flexDirection: "row",

@@ -36,7 +36,7 @@ export default function SummaryCard({
   const neutralRow =
     trendNeutral === true || trend.trim() === "—" || trendIsNewData === true || trend.trim() === "Data baru";
   const up = trendUp ?? trend.trim().startsWith("+");
-  const trendColor = neutralRow ? CERDIK_COLORS.textSecondary : up ? "#16A34A" : "#EF4444";
+  const trendColor = neutralRow ? CERDIK_COLORS.textSecondary : up ? CERDIK_COLORS.income : CERDIK_COLORS.expense;
   const trendIcon: keyof typeof Ionicons.glyphMap = neutralRow
     ? "analytics-outline"
     : up

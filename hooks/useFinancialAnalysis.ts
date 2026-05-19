@@ -8,16 +8,9 @@ export type CategoryExpense = {
   percentage: number;
 };
 
-const CHART_COLORS = [
-  "#6C63FF",
-  "#43D9AD",
-  "#FF6B6B",
-  "#FFB347",
-  "#3B82F6",
-  "#A855F7",
-  "#14B8A6",
-  "#F97316",
-];
+import { CERDIK_CHART_COLORS, CERDIK_COLORS } from "@/constants/colors";
+
+const CHART_COLORS = [...CERDIK_CHART_COLORS];
 
 export const formatCurrency = (value: number) =>
   `Rp ${new Intl.NumberFormat("id-ID").format(Math.round(value))}`;
@@ -78,13 +71,13 @@ export const buildWeeklyBarData = (transactions: Transaction[], now = new Date()
     data.push({
       value: income,
       label: dayLabels[date.getDay()],
-      frontColor: "#22C55E",
+      frontColor: CERDIK_COLORS.income,
       spacing: 2,
     });
     data.push({
       value: expense,
       label: "",
-      frontColor: "#EF4444",
+      frontColor: CERDIK_COLORS.expense,
       spacing: 12,
     });
   }

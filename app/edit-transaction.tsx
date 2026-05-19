@@ -107,7 +107,7 @@ export default function EditTransactionScreen() {
     }
   }, [type, categories, selectedCategory]);
 
-  const saveButtonColor = type === "income" ? CERDIK_COLORS.secondary : CERDIK_COLORS.accent;
+  const saveButtonColor = type === "income" ? CERDIK_COLORS.secondary : CERDIK_COLORS.expense;
 
   const showSuccessToast = () => {
     if (Platform.OS === "android") {
@@ -218,7 +218,7 @@ export default function EditTransactionScreen() {
                 flex: 1,
                 borderRadius: 999,
                 paddingVertical: 10,
-                backgroundColor: type === "expense" ? CERDIK_COLORS.accent : "transparent",
+                backgroundColor: type === "expense" ? CERDIK_COLORS.expense : "transparent",
                 opacity: isLoading ? 0.6 : 1,
               }}
             >
@@ -385,12 +385,12 @@ export default function EditTransactionScreen() {
               alignItems: "center",
               justifyContent: "center",
               borderWidth: 1,
-              borderColor: "#DC2626",
+              borderColor: CERDIK_COLORS.danger,
               backgroundColor: "#FFFFFF",
               opacity: isLoading ? 0.6 : 1,
             }}
           >
-            <Text style={{ color: "#DC2626", fontSize: 16, fontWeight: "700" }}>Hapus Transaksi</Text>
+            <Text style={{ color: CERDIK_COLORS.danger, fontSize: 16, fontWeight: "700" }}>Hapus Transaksi</Text>
           </Pressable>
         </ScrollView>
       </TouchableWithoutFeedback>

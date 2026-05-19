@@ -5,11 +5,14 @@ import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, 
 
 import CerdikButton from "@/components/ui/CerdikButton";
 import CerdikCard from "@/components/ui/CerdikCard";
+import CerdikLogo from "@/components/ui/CerdikLogo";
 import { loginWithPhone } from "@/services/authService";
+import { useAuthStore } from "@/stores/useAuthStore";
 import { CERDIK_COLORS } from "@/constants/colors";
 import { displayPhone, validatePhone } from "@/utils/phoneValidator";
 
 export default function LoginScreen() {
+  const loadStoredAuth = useAuthStore((s) => s.loadStoredAuth);
   const params = useLocalSearchParams<{ registered?: string }>();
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -52,6 +55,7 @@ export default function LoginScreen() {
         setLoginError(result.error ?? "Login gagal. Coba lagi.");
         return;
       }
+      await loadStoredAuth();
       router.replace("/(tabs)");
     } catch (error: any) {
       setLoginError(error?.message ?? "Login gagal. Coba lagi.");
@@ -72,22 +76,10 @@ export default function LoginScreen() {
         contentContainerStyle={{ flexGrow: 1, justifyContent: "center", paddingHorizontal: 24, paddingVertical: 24 }}
       >
       <View style={{ marginBottom: 24, alignItems: "center" }}>
-        <View
-          style={{
-            marginBottom: 12,
-            width: 64,
-            height: 64,
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 16,
-            backgroundColor: `${CERDIK_COLORS.primary}1A`,
-          }}
-        >
-          <Text style={{ fontSize: 30 }}>💸</Text>
-        </View>
+        <CerdikLogo size={96} style={{ marginBottom: 12 }} />
         <Text style={{ fontSize: 24, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>CERDIK</Text>
-        <Text style={{ marginTop: 4, fontSize: 14, color: CERDIK_COLORS.textSecondary }}>
-          Kelola Uangmu, Raih Mimpimu
+        <Text style={{ marginTop: 4, fontSize: 13, color: CERDIK_COLORS.textSecondary, textAlign: "center", lineHeight: 20 }}>
+          Catat, Evaluasi, Rencanakan, Dan Inisiasi Keuangan
         </Text>
       </View>
 
@@ -102,7 +94,7 @@ export default function LoginScreen() {
               borderWidth: 1,
               backgroundColor: "#FFFFFF",
               paddingHorizontal: 14,
-              borderColor: phoneError ? CERDIK_COLORS.accent : "#E2E8F0",
+              borderColor: phoneError ? CERDIK_COLORS.danger : "#E2E8F0",
             }}
           >
             <Text style={{ marginRight: 8, fontSize: 18 }}>🇮🇩</Text>
@@ -122,7 +114,7 @@ export default function LoginScreen() {
               placeholderTextColor="#94A3B8"
             />
           </View>
-          {phoneError ? <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.accent }}>{phoneError}</Text> : null}
+          {phoneError ? <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.danger }}>{phoneError}</Text> : null}
         </View>
 
         <View style={{ marginBottom: 16 }}>
@@ -135,7 +127,7 @@ export default function LoginScreen() {
               borderWidth: 1,
               backgroundColor: "#FFFFFF",
               paddingHorizontal: 14,
-              borderColor: passwordError ? CERDIK_COLORS.accent : "#E2E8F0",
+              borderColor: passwordError ? CERDIK_COLORS.danger : "#E2E8F0",
             }}
           >
             <TextInput
@@ -156,13 +148,13 @@ export default function LoginScreen() {
               <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={CERDIK_COLORS.textSecondary} />
             </Pressable>
           </View>
-          {passwordError ? <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.accent }}>{passwordError}</Text> : null}
+          {passwordError ? <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.danger }}>{passwordError}</Text> : null}
         </View>
 
         <CerdikButton title="Masuk" onPress={handleLogin} loading={isLoading} disabled={!canSubmit} />
-        {loginError ? <Text style={{ marginTop: 10, fontSize: 12, color: CERDIK_COLORS.accent }}>{loginError}</Text> : null}
+        {loginError ? <Text style={{ marginTop: 10, fontSize: 12, color: CERDIK_COLORS.danger }}>{loginError}</Text> : null}
         {params.registered === "1" ? (
-          <Text style={{ marginTop: 10, fontSize: 12, color: "#16A34A" }}>Pendaftaran berhasil! Silakan login.</Text>
+          <Text style={{ marginTop: 10, fontSize: 12, color: CERDIK_COLORS.success }}>Pendaftaran berhasil! Silakan login.</Text>
         ) : null}
       </CerdikCard>
 

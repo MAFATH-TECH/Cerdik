@@ -43,9 +43,9 @@ export default function CerdikInput({
           alignItems: "center",
           borderRadius: 16,
           borderWidth: 1,
-          backgroundColor: "#FFFFFF",
+          backgroundColor: CERDIK_COLORS.card,
           paddingHorizontal: 16,
-          borderColor: error ? CERDIK_COLORS.accent : "#E2E8F0",
+          borderColor: error ? CERDIK_COLORS.danger : CERDIK_COLORS.border,
         }}
       >
         <TextInput
@@ -62,7 +62,7 @@ export default function CerdikInput({
           accessibilityLabel={label}
           secureTextEntry={secureTextEntry}
           style={{ flex: 1, paddingVertical: 12, fontSize: 16, color: CERDIK_COLORS.textPrimary }}
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={CERDIK_COLORS.placeholder}
         />
         {rightIcon ? (
           <Pressable onPress={onRightIconPress} hitSlop={8}>
@@ -71,7 +71,7 @@ export default function CerdikInput({
         ) : null}
       </View>
       {error ? (
-        <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.accent }}>
+        <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.danger }}>
           {error}
         </Text>
       ) : null}

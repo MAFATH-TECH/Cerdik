@@ -8,6 +8,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as Updates from "expo-updates";
 
 import { CERDIK_COLORS } from "../constants/colors";
+import { clearLocalAuthSession, getSessionOrClear, isRefreshTokenError } from "../services/authSession";
 import { isSupabaseConfigured, supabase } from "../services/supabase";
 import { useAuthStore } from "../stores/useAuthStore";
 import { useGoalStore } from "../stores/useGoalStore";
@@ -42,8 +43,17 @@ export default function RootLayout() {
 
     const subscription = isSupabaseConfigured
       ? supabase.auth
-          .onAuthStateChange((_event, session) => {
-            syncSession(session).catch(() => undefined);
+          .onAuthStateChange((event, session) => {
+            if (event === "SIGNED_OUT" || !session) {
+              syncSession(null).catch(() => undefined);
+              return;
+            }
+            syncSession(session).catch(async (error) => {
+              if (isRefreshTokenError(error)) {
+                await clearLocalAuthSession();
+                await logout();
+              }
+            });
           })
           .data.subscription
       : null;
@@ -58,7 +68,20 @@ export default function RootLayout() {
       }
 
       if (state === "active") {
-        await supabase.auth.startAutoRefresh();
+        const { session, error } = await getSessionOrClear();
+        if (error && isRefreshTokenError(error)) {
+          await logout();
+          resetTransactionState();
+          resetGoalState();
+          router.dismissAll();
+          router.replace("/(auth)/login");
+          return;
+        }
+
+        if (session) {
+          await syncSession(session).catch(() => undefined);
+          await supabase.auth.startAutoRefresh();
+        }
 
         if (!backgroundAtRef.current) return;
         const elapsed = Date.now() - backgroundAtRef.current;
@@ -110,6 +133,12 @@ export default function RootLayout() {
           <Stack.Screen name="profile" options={{ title: "Pengaturan" }} />
           <Stack.Screen name="transactions" options={{ title: "Semua Transaksi" }} />
           <Stack.Screen name="edit-transaction" options={{ title: "Edit Transaksi" }} />
+          <Stack.Screen name="edukasi/index" options={{ headerShown: false }} />
+          <Stack.Screen name="edukasi/pengetahuan" options={{ headerShown: false }} />
+          <Stack.Screen name="edukasi/pengetahuan/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="edukasi/tips" options={{ headerShown: false }} />
+          <Stack.Screen name="edukasi/kuis" options={{ headerShown: false }} />
+          <Stack.Screen name="edukasi/kuis/[id]" options={{ headerShown: false }} />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

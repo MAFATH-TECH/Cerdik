@@ -135,10 +135,10 @@ export default function TransactionsScreen() {
                       borderRadius: 18,
                       alignItems: "center",
                       justifyContent: "center",
-                      backgroundColor: isExpense ? "#FEE2E2" : "#DCFCE7",
+                      backgroundColor: isExpense ? CERDIK_COLORS.surfaceDanger : CERDIK_COLORS.surfaceSuccess,
                     }}
                   >
-                    <Ionicons name={mapCategoryIcon(tx.category)} size={16} color={isExpense ? "#B91C1C" : "#166534"} />
+                    <Ionicons name={mapCategoryIcon(tx.category)} size={16} color={isExpense ? CERDIK_COLORS.expense : CERDIK_COLORS.income} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "700" }}>{tx.note || tx.category}</Text>
@@ -147,7 +147,7 @@ export default function TransactionsScreen() {
                     </Text>
                   </View>
                 </View>
-                <Text style={{ color: isExpense ? "#DC2626" : "#16A34A", fontWeight: "700" }}>
+                <Text style={{ color: isExpense ? CERDIK_COLORS.expense : CERDIK_COLORS.income, fontWeight: "700" }}>
                   {isExpense ? "-" : "+"}
                   {formatRupiah(tx.amount)}
                 </Text>

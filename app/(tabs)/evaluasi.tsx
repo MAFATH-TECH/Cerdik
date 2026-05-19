@@ -101,7 +101,7 @@ function PulseBlock({
         {
           height,
           width: width ?? "100%",
-          backgroundColor: "#EEF2F7",
+          backgroundColor: CERDIK_COLORS.muted,
           borderRadius: 12,
           opacity,
         },
@@ -267,8 +267,8 @@ export default function EvaluasiScreen() {
 
         const label = period === "minggu" ? dayNames[d.getDay()] : String(d.getDate());
 
-        data.push({ value: totals.income, label, frontColor: "#43D9AD", spacing: 2 });
-        data.push({ value: totals.expense, label: "", frontColor: "#FF6B6B", spacing: 12 });
+        data.push({ value: totals.income, label, frontColor: CERDIK_COLORS.income, spacing: 2 });
+        data.push({ value: totals.expense, label: "", frontColor: CERDIK_COLORS.expense, spacing: 12 });
       }
     } else {
       // week bucket
@@ -291,8 +291,8 @@ export default function EvaluasiScreen() {
           expenseSum += totals.expense;
         }
 
-        data.push({ value: incomeSum, label: `W${w + 1}`, frontColor: "#43D9AD", spacing: 2 });
-        data.push({ value: expenseSum, label: "", frontColor: "#FF6B6B", spacing: 12 });
+        data.push({ value: incomeSum, label: `W${w + 1}`, frontColor: CERDIK_COLORS.income, spacing: 2 });
+        data.push({ value: expenseSum, label: "", frontColor: CERDIK_COLORS.expense, spacing: 12 });
       }
     }
 
@@ -300,7 +300,7 @@ export default function EvaluasiScreen() {
     return data;
   }, [period, periodTransactions, selectedMonth, selectedYear]);
 
-  const SAVING_SLICE_COLOR = "#43D9AD";
+  const SAVING_SLICE_COLOR = CERDIK_COLORS.secondary;
 
   const pieData = useMemo(() => {
     const slices: { value: number; color: string; text: string }[] = summary.byCategory.map((item) => ({
@@ -329,28 +329,28 @@ export default function EvaluasiScreen() {
   const savingCardColors = useMemo(() => {
     if (savingSharePct <= 0) {
       return {
-        border: "#E2E8F0",
+        border: CERDIK_COLORS.border,
         accent: CERDIK_COLORS.textSecondary,
         message: "Belum ada tabungan bulan ini",
       };
     }
     if (savingSharePct >= 20) {
       return {
-        border: "#BBF7D0",
-        accent: "#15803D",
+        border: `${CERDIK_COLORS.success}55`,
+        accent: CERDIK_COLORS.primary,
         message: "Tabunganmu sudah ideal! 🎉",
       };
     }
     if (savingSharePct >= 10) {
       return {
-        border: "#FEF08A",
-        accent: "#CA8A04",
+        border: `${CERDIK_COLORS.warning}44`,
+        accent: CERDIK_COLORS.warning,
         message: "Lumayan! Coba tingkatkan ke 20% ya",
       };
     }
     return {
-      border: "#FECACA",
-      accent: "#DC2626",
+      border: `${CERDIK_COLORS.danger}44`,
+      accent: CERDIK_COLORS.danger,
       message: "Yuk tingkatkan tabunganmu!",
     };
   }, [savingSharePct]);
@@ -413,25 +413,25 @@ export default function EvaluasiScreen() {
           ))}
         </ScrollView>
 
-        <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+        <View style={{ backgroundColor: CERDIK_COLORS.card, borderRadius: 16, padding: 14, marginBottom: 14 }}>
           <PulseBlock height={16} width="55%" style={{ marginBottom: 10 }} />
           <PulseBlock height={12} width="80%" style={{ marginBottom: 8 }} />
           <PulseBlock height={12} width="45%" />
         </View>
 
-        <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+        <View style={{ backgroundColor: CERDIK_COLORS.card, borderRadius: 16, padding: 14, marginBottom: 14 }}>
           <PulseBlock height={16} width="45%" style={{ marginBottom: 12 }} />
           <PulseBlock height={220} width="100%" />
         </View>
 
-        <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+        <View style={{ backgroundColor: CERDIK_COLORS.card, borderRadius: 16, padding: 14, marginBottom: 14 }}>
           <PulseBlock height={16} width="60%" style={{ marginBottom: 12 }} />
           <PulseBlock height={170} width={170} style={{ borderRadius: 85, alignSelf: "center" }} />
           <PulseBlock height={12} width="70%" style={{ marginTop: 12, alignSelf: "center" }} />
           <PulseBlock height={12} width="90%" style={{ marginTop: 8, alignSelf: "center" }} />
         </View>
 
-        <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+        <View style={{ backgroundColor: CERDIK_COLORS.card, borderRadius: 16, padding: 14, marginBottom: 14 }}>
           <PulseBlock height={16} width="60%" style={{ marginBottom: 12 }} />
           {[0, 1, 2, 3].map((i) => (
             <View key={i} style={{ marginBottom: 14 }}>
@@ -441,7 +441,7 @@ export default function EvaluasiScreen() {
           ))}
         </View>
 
-        <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14 }}>
+        <View style={{ backgroundColor: CERDIK_COLORS.card, borderRadius: 16, padding: 14 }}>
           <PulseBlock height={16} width="70%" style={{ marginBottom: 12 }} />
           {[0, 1, 2].map((i) => (
             <View key={i} style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
@@ -491,13 +491,19 @@ export default function EvaluasiScreen() {
     >
       <Text style={{ marginBottom: 12, fontSize: 24, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>Evaluasi Keuangan</Text>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 14 }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        nestedScrollEnabled
+        contentContainerStyle={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}
+      >
         {[
           { key: "minggu" as const, label: "Minggu Ini" },
           { key: "bulan" as const, label: "Bulan Ini" },
           { key: "3bulan" as const, label: "3 Bulan" },
-        ].map((option) => {
+        ].map((option, index, arr) => {
           const active = option.key === period;
+          const label = option.label?.trim() || "Periode";
           return (
             <Pressable
               key={option.key}
@@ -506,15 +512,28 @@ export default function EvaluasiScreen() {
                 setSelectedPeriod(selectedMonth, selectedYear).catch(() => undefined);
               }}
               style={{
+                flexShrink: 0,
+                marginRight: index < arr.length - 1 ? 8 : 0,
                 paddingHorizontal: 14,
                 paddingVertical: 8,
+                minHeight: 36,
+                justifyContent: "center",
                 borderRadius: 999,
-                backgroundColor: active ? CERDIK_COLORS.primary : "#FFFFFF",
+                backgroundColor: active ? CERDIK_COLORS.primary : CERDIK_COLORS.card,
                 borderWidth: 1,
-                borderColor: active ? CERDIK_COLORS.primary : "#E2E8F0",
+                borderColor: active ? CERDIK_COLORS.primary : CERDIK_COLORS.border,
               }}
             >
-              <Text style={{ color: active ? "#FFFFFF" : CERDIK_COLORS.textSecondary, fontWeight: "700" }}>{option.label}</Text>
+              <Text
+                style={{
+                  color: active ? "#FFFFFF" : CERDIK_COLORS.textSecondary,
+                  fontWeight: "700",
+                  fontSize: 12,
+                  includeFontPadding: false,
+                }}
+              >
+                {label}
+              </Text>
             </Pressable>
           );
         })}
@@ -522,7 +541,7 @@ export default function EvaluasiScreen() {
 
       <View
         style={{
-          backgroundColor: "#FFFFFF",
+          backgroundColor: CERDIK_COLORS.card,
           borderRadius: 16,
           padding: 14,
           marginBottom: 14,
@@ -537,25 +556,27 @@ export default function EvaluasiScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 12, color: CERDIK_COLORS.textSecondary }}>Pemasukan</Text>
             <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-              <Ionicons name="arrow-up" size={14} color="#16A34A" />
-              <Text style={{ marginLeft: 4, color: "#16A34A", fontWeight: "700" }}>{formatCurrency(summary.totalIncome)}</Text>
+              <Ionicons name="arrow-up" size={14} color={CERDIK_COLORS.income} />
+              <Text style={{ marginLeft: 4, color: CERDIK_COLORS.income, fontWeight: "700" }}>{formatCurrency(summary.totalIncome)}</Text>
             </View>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 12, color: CERDIK_COLORS.textSecondary }}>Pengeluaran</Text>
             <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-              <Ionicons name="arrow-down" size={14} color="#DC2626" />
-              <Text style={{ marginLeft: 4, color: "#DC2626", fontWeight: "700" }}>{formatCurrency(summary.totalExpense)}</Text>
+              <Ionicons name="arrow-down" size={14} color={CERDIK_COLORS.expense} />
+              <Text style={{ marginLeft: 4, color: CERDIK_COLORS.expense, fontWeight: "700" }}>{formatCurrency(summary.totalExpense)}</Text>
             </View>
           </View>
         </View>
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
           <Text style={{ color: CERDIK_COLORS.textSecondary }}>Net</Text>
-          <Text style={{ color: summary.net >= 0 ? "#16A34A" : "#DC2626", fontWeight: "700" }}>{formatCurrency(summary.net)}</Text>
+          <Text style={{ color: summary.net >= 0 ? CERDIK_COLORS.income : CERDIK_COLORS.expense, fontWeight: "700" }}>
+            {formatCurrency(summary.net)}
+          </Text>
         </View>
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}>
           <Text style={{ color: CERDIK_COLORS.textSecondary }}>% Tabungan</Text>
-          <Text style={{ color: summary.savingsPercentage >= 0 ? "#16A34A" : "#DC2626", fontWeight: "700" }}>
+          <Text style={{ color: summary.savingsPercentage >= 0 ? CERDIK_COLORS.income : CERDIK_COLORS.expense, fontWeight: "700" }}>
             {summary.savingsPercentage.toFixed(1)}%
           </Text>
         </View>
@@ -563,7 +584,7 @@ export default function EvaluasiScreen() {
 
       <View
         style={{
-          backgroundColor: "#FFFFFF",
+          backgroundColor: CERDIK_COLORS.card,
           borderRadius: 16,
           padding: 14,
           marginBottom: 14,
@@ -589,7 +610,7 @@ export default function EvaluasiScreen() {
         <Text style={{ fontSize: 13, color: savingCardColors.accent, lineHeight: 20 }}>{savingCardColors.message}</Text>
       </View>
 
-      <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+      <View style={{ backgroundColor: CERDIK_COLORS.card, borderRadius: 16, padding: 14, marginBottom: 14 }}>
         <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
           Grafik {periodLabel}
         </Text>
@@ -607,7 +628,7 @@ export default function EvaluasiScreen() {
         />
       </View>
 
-      <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+      <View style={{ backgroundColor: CERDIK_COLORS.card, borderRadius: 16, padding: 14, marginBottom: 14 }}>
         <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>Pengeluaran per Kategori</Text>
         <Text style={{ marginBottom: 10, fontSize: 12, color: CERDIK_COLORS.textSecondary }}>
           Diagram ini membandingkan nominal antar irisan: kategori pengeluaran lain + satu slice hijau untuk total tabungan
@@ -631,7 +652,7 @@ export default function EvaluasiScreen() {
         </View>
       </View>
 
-      <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+      <View style={{ backgroundColor: CERDIK_COLORS.card, borderRadius: 16, padding: 14, marginBottom: 14 }}>
         <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>Tabel Kategori Pengeluaran</Text>
 
         {summary.byCategory.length === 0 && summary.totalSaving <= 0 ? (
@@ -646,7 +667,7 @@ export default function EvaluasiScreen() {
                     {formatCurrency(summary.totalSaving)} | {savingSharePct.toFixed(1)}% pemasukan
                   </Text>
                 </View>
-                <View style={{ marginTop: 6, height: 8, borderRadius: 999, backgroundColor: "#E2E8F0" }}>
+                <View style={{ marginTop: 6, height: 8, borderRadius: 999, backgroundColor: CERDIK_COLORS.border }}>
                   <View
                     style={{
                       width: progressBarWidth(Math.min(100, savingSharePct)) as any,
@@ -670,7 +691,7 @@ export default function EvaluasiScreen() {
                       {formatCurrency(item.total)} | {pct.toFixed(1)}% pengeluaran
                     </Text>
                   </View>
-                  <View style={{ marginTop: 6, height: 8, borderRadius: 999, backgroundColor: "#E2E8F0" }}>
+                  <View style={{ marginTop: 6, height: 8, borderRadius: 999, backgroundColor: CERDIK_COLORS.border }}>
                     <View
                       style={{
                         width: progressBarWidth(pct) as any,
@@ -687,7 +708,7 @@ export default function EvaluasiScreen() {
         )}
       </View>
 
-      <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+      <View style={{ backgroundColor: CERDIK_COLORS.card, borderRadius: 16, padding: 14, marginBottom: 14 }}>
         <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
           Daftar Transaksi (periode)
         </Text>
@@ -729,8 +750,8 @@ export default function EvaluasiScreen() {
                     justifyContent: "space-between",
                     paddingVertical: 10,
                     borderBottomWidth: isLast ? 0 : 1,
-                    borderBottomColor: "#EEF2F7",
-                    backgroundColor: "#FFFFFF",
+                    borderBottomColor: CERDIK_COLORS.muted,
+                    backgroundColor: CERDIK_COLORS.card,
                   }}
                 >
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, marginRight: 10 }}>
@@ -741,13 +762,13 @@ export default function EvaluasiScreen() {
                         borderRadius: 17,
                         alignItems: "center",
                         justifyContent: "center",
-                        backgroundColor: isExpense ? "#FEE2E2" : "#DCFCE7",
+                        backgroundColor: isExpense ? CERDIK_COLORS.surfaceDanger : CERDIK_COLORS.surfaceSuccess,
                       }}
                     >
                       <Ionicons
                         name={mapCategoryIcon(tx.category)}
                         size={16}
-                        color={isExpense ? "#B91C1C" : "#166534"}
+                        color={isExpense ? CERDIK_COLORS.expense : CERDIK_COLORS.income}
                       />
                     </View>
                     <View style={{ flex: 1 }}>
@@ -762,7 +783,7 @@ export default function EvaluasiScreen() {
                       </Text>
                     </View>
                   </View>
-                  <Text style={{ color: isExpense ? "#DC2626" : "#16A34A", fontWeight: "700" }}>
+                  <Text style={{ color: isExpense ? CERDIK_COLORS.expense : CERDIK_COLORS.income, fontWeight: "700" }}>
                     {isExpense ? "-" : "+"}
                     {formatCurrency(tx.amount)}
                   </Text>
@@ -773,7 +794,7 @@ export default function EvaluasiScreen() {
         )}
       </View>
 
-      <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14 }}>
+      <View style={{ backgroundColor: CERDIK_COLORS.card, borderRadius: 16, padding: 14 }}>
         <Text style={{ marginBottom: 10, fontSize: 16, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>Ringkasan Keuanganmu</Text>
         {insights.map((line) => (
           <View
@@ -785,7 +806,7 @@ export default function EvaluasiScreen() {
               borderRadius: 14,
               backgroundColor: "#F8FAFC",
               borderWidth: 1,
-              borderColor: "#EEF2F7",
+              borderColor: CERDIK_COLORS.muted,
               marginBottom: 10,
             }}
           >

@@ -2,6 +2,7 @@ import { Session } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 
+import { clearLocalAuthSession, getSessionOrClear, isRefreshTokenError } from "@/services/authSession";
 import { ensureSupabaseConfigured, getAuthCallbackUrl, isSupabaseConfigured, supabase } from "@/services/supabase";
 
 type AuthUser = {
@@ -55,6 +56,13 @@ const mapProfileToUser = (profile: ProfileRow): AuthUser => ({
 
 const REMEMBER_ME_KEY = "cerdik:remember-me";
 
+const getErrorMessage = (error: unknown) => {
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return String((error as { message?: string }).message ?? "");
+  }
+  return String(error ?? "");
+};
+
 const sanitizeText = (value: string) => value.replace(/[<>"'`]/g, "").trim();
 const normalizePhone = (value: string) => {
   const digits = value.replace(/\D/g, "");
@@ -102,14 +110,16 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       const rememberMe = await AsyncStorage.getItem(REMEMBER_ME_KEY);
       if (rememberMe === "false") {
-        await supabase.auth.signOut();
+        await clearLocalAuthSession();
         set({ user: null, session: null, isHydrated: true, isLoading: false });
         return;
       }
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { session, error: sessionError } = await getSessionOrClear();
+
+      if (sessionError && !isRefreshTokenError(sessionError)) {
+        console.warn("[auth] getSession:", getErrorMessage(sessionError));
+      }
 
       if (!session?.user) {
         set({ user: null, session: null, isHydrated: true, isLoading: false });
@@ -118,7 +128,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       const profile = await getProfileByUserId(session.user.id);
       set({ user: mapProfileToUser(profile), session, isHydrated: true, isLoading: false });
-    } catch {
+    } catch (error) {
+      if (isRefreshTokenError(error)) {
+        await clearLocalAuthSession();
+      }
       set({ user: null, session: null, isHydrated: true, isLoading: false });
     }
   },
@@ -263,9 +276,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-    if (isSupabaseConfigured) {
-      await supabase.auth.signOut();
-    }
+    await clearLocalAuthSession();
     set({ user: null, session: null, isLoading: false, isHydrated: true });
   },
 }));

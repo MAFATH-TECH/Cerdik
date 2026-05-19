@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { Dimensions, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import CerdikLogo from "@/components/ui/CerdikLogo";
 import { CERDIK_COLORS } from "@/constants/colors";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -12,7 +13,6 @@ type Slide = {
   key: string;
   title: string;
   description: string;
-  emoji: string;
 };
 
 const SLIDES: Slide[] = [
@@ -20,19 +20,16 @@ const SLIDES: Slide[] = [
     key: "s1",
     title: "Catat setiap transaksi",
     description: "Biar kamu tahu uangmu lari ke mana. Mulai dari yang kecil: jajan, pulsa, transport.",
-    emoji: "🧾",
   },
   {
     key: "s2",
     title: "Pantau keuanganmu",
     description: "Lihat ringkasan & grafik supaya kamu makin paham pola pemasukan dan pengeluaran.",
-    emoji: "📊",
   },
   {
     key: "s3",
     title: "Raih target impianmu",
     description: "Buat goal, isi tabungan pelan-pelan, dan lihat progress-nya naik setiap hari.",
-    emoji: "🎯",
   },
 ];
 
@@ -118,7 +115,7 @@ export default function OnboardingScreen() {
                 marginBottom: 26,
               }}
             >
-              <Text style={{ fontSize: 84 }}>{slide.emoji}</Text>
+              <CerdikLogo size={160} />
             </View>
 
             <Text style={{ fontSize: 28, fontWeight: "900", color: "#FFFFFF", textAlign: "center" }}>
@@ -165,7 +162,7 @@ export default function OnboardingScreen() {
           }}
         >
           <Text style={{ color: CERDIK_COLORS.primary, fontWeight: "900", fontSize: 16 }}>
-            {isLast ? "Mulai" : "Lanjut"}
+            {isLast ? "Mulai CERDIK" : "Lanjut"}
           </Text>
         </Pressable>
       </View>

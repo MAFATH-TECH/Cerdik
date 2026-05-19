@@ -2,24 +2,38 @@ const sharp = require("sharp");
 const fs = require("fs");
 const path = require("path");
 
+const BRAND_BG = { r: 14, g: 82, b: 48, alpha: 1 }; // #0E5230 — hijau tua logo
+
 const assets = [
   {
-    input: "./assets/icon.png",
+    input: "./assets/cerdik.jpeg",
     output: "./assets/icon.png",
     width: 1024,
     height: 1024,
   },
   {
-    input: "./assets/adaptive-icon.png",
+    input: "./assets/cerdik.jpeg",
     output: "./assets/adaptive-icon.png",
     width: 1024,
     height: 1024,
   },
   {
-    input: "./assets/splash-icon.png",
+    input: "./assets/cerdik.jpeg",
     output: "./assets/splash.png",
     width: 1284,
     height: 2778,
+  },
+  {
+    input: "./assets/cerdik.jpeg",
+    output: "./assets/favicon.png",
+    width: 48,
+    height: 48,
+  },
+  {
+    input: "./assets/cerdik.jpeg",
+    output: "./assets/splash-icon.png",
+    width: 200,
+    height: 200,
   },
 ];
 
@@ -35,13 +49,13 @@ async function convertAssets() {
       await sharp(asset.input)
         .resize(asset.width, asset.height, {
           fit: "contain",
-          background: { r: 108, g: 99, b: 255, alpha: 1 },
+          background: BRAND_BG,
         })
         .png()
         .toFile(tmp);
 
       fs.renameSync(tmp, asset.output);
-      console.log(`✓ Converted: ${asset.output}`); 
+      console.log(`✓ Converted: ${asset.output}`);
     } catch (err) {
       console.error(`✗ Failed: ${asset.input}`, err?.message ?? String(err));
     }
@@ -50,4 +64,3 @@ async function convertAssets() {
 }
 
 convertAssets();
-

@@ -6,6 +6,7 @@ import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, Scro
 import CerdikButton from "@/components/ui/CerdikButton";
 import CerdikCard from "@/components/ui/CerdikCard";
 import CerdikInput from "@/components/ui/CerdikInput";
+import CerdikLogo from "@/components/ui/CerdikLogo";
 import { CERDIK_COLORS } from "@/constants/colors";
 import { registerWithPhone } from "@/services/authService";
 import { displayPhone, formatPhone, validatePhone } from "@/utils/phoneValidator";
@@ -185,8 +186,8 @@ export default function RegisterScreen() {
         contentContainerStyle={{ flexGrow: 1, justifyContent: "center", paddingHorizontal: 24, paddingVertical: 24 }}
       >
       <View style={{ marginBottom: 16, alignItems: "center" }}>
-        <Text style={{ fontSize: 30 }}>🎯</Text>
-        <Text style={{ marginTop: 8, fontSize: 24, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
+        <CerdikLogo size={88} style={{ marginBottom: 8 }} />
+        <Text style={{ fontSize: 24, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>
           Daftar CERDIK
         </Text>
         <Text style={{ marginTop: 4, fontSize: 14, color: CERDIK_COLORS.textSecondary }}>
@@ -220,7 +221,7 @@ export default function RegisterScreen() {
               borderWidth: 1,
               backgroundColor: "#FFFFFF",
               paddingHorizontal: 14,
-              borderColor: phoneError ? CERDIK_COLORS.accent : "#E2E8F0",
+              borderColor: phoneError ? CERDIK_COLORS.danger : "#E2E8F0",
             }}
           >
             <Text style={{ marginRight: 8, fontSize: 18 }}>🇮🇩</Text>
@@ -242,9 +243,9 @@ export default function RegisterScreen() {
               style={{ flex: 1, paddingVertical: 12, fontSize: 16, color: CERDIK_COLORS.textPrimary }}
               placeholderTextColor="#94A3B8"
             />
-            {phoneTouched && phoneValid ? <Ionicons name="checkmark-circle" size={18} color="#16A34A" /> : null}
+            {phoneTouched && phoneValid ? <Ionicons name="checkmark-circle" size={18} color={CERDIK_COLORS.success} /> : null}
           </View>
-          {phoneError ? <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.accent }}>{phoneError}</Text> : null}
+          {phoneError ? <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.danger }}>{phoneError}</Text> : null}
         </View>
         <CerdikInput
           label="Password"
@@ -280,7 +281,7 @@ export default function RegisterScreen() {
               borderWidth: 1,
               backgroundColor: "#FFFFFF",
               paddingHorizontal: 14,
-              borderColor: confirmPasswordError ? CERDIK_COLORS.accent : "#E2E8F0",
+              borderColor: confirmPasswordError ? CERDIK_COLORS.danger : "#E2E8F0",
             }}
           >
             <TextInput
@@ -297,7 +298,11 @@ export default function RegisterScreen() {
               placeholderTextColor="#94A3B8"
             />
             {confirmPassword.length > 0 ? (
-              <Ionicons name={confirmPasswordValid ? "checkmark-circle" : "close-circle"} size={18} color={confirmPasswordValid ? "#16A34A" : "#DC2626"} />
+              <Ionicons
+                name={confirmPasswordValid ? "checkmark-circle" : "close-circle"}
+                size={18}
+                color={confirmPasswordValid ? CERDIK_COLORS.success : CERDIK_COLORS.danger}
+              />
             ) : null}
             <Pressable onPress={() => setShowConfirmPassword((prev) => !prev)} style={{ marginLeft: 8 }}>
               <Ionicons
@@ -308,12 +313,12 @@ export default function RegisterScreen() {
             </Pressable>
           </View>
           {confirmPasswordError ? (
-            <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.accent }}>{confirmPasswordError}</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: CERDIK_COLORS.danger }}>{confirmPasswordError}</Text>
           ) : null}
         </View>
 
         {renderSelect("Kelas", kelas, () => setKelasModalOpen(true))}
-        {kelasError ? <Text style={{ marginTop: -8, marginBottom: 12, fontSize: 12, color: CERDIK_COLORS.accent }}>{kelasError}</Text> : null}
+        {kelasError ? <Text style={{ marginTop: -8, marginBottom: 12, fontSize: 12, color: CERDIK_COLORS.danger }}>{kelasError}</Text> : null}
 
         <CerdikButton title="Daftar" onPress={handleRegister} loading={isLoading} disabled={!canSubmit} />
       </CerdikCard>

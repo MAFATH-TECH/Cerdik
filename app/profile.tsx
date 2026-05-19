@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, Pre
 
 import CerdikButton from "@/components/ui/CerdikButton";
 import CerdikCard from "@/components/ui/CerdikCard";
+import CerdikLogo from "@/components/ui/CerdikLogo";
 import { CERDIK_COLORS } from "@/constants/colors";
 import { userSettingsService } from "@/services/userSettingsService";
 import { useAuthStore } from "@/stores/useAuthStore";
@@ -143,21 +144,7 @@ export default function ProfileScreen() {
       contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
     >
       <View style={{ alignItems: "center", marginBottom: 16 }}>
-        <View
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: 36,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: `${CERDIK_COLORS.primary}22`,
-            marginBottom: 8,
-          }}
-        >
-          <Text style={{ fontSize: 28, color: CERDIK_COLORS.primary, fontWeight: "700" }}>
-            {(user?.name ?? "S").slice(0, 1).toUpperCase()}
-          </Text>
-        </View>
+        <CerdikLogo size={80} style={{ marginBottom: 8 }} />
         <Text style={{ fontSize: 18, fontWeight: "800", color: CERDIK_COLORS.textPrimary }}>Pengaturan</Text>
         <Text style={{ marginTop: 4, color: CERDIK_COLORS.textSecondary }}>CERDIK v1.0.0</Text>
         <Text style={{ marginTop: 4, color: CERDIK_COLORS.textSecondary }}>{user?.email ?? "-"}</Text>
@@ -325,17 +312,17 @@ export default function ProfileScreen() {
           borderRadius: 16,
           marginBottom: 12,
           borderWidth: 1.5,
-          borderColor: "#DC2626",
+          borderColor: CERDIK_COLORS.danger,
           backgroundColor: "#FFFFFF",
           opacity: resettingTx ? 0.65 : 1,
         }}
       >
         {resettingTx ? (
-          <ActivityIndicator color="#DC2626" />
+          <ActivityIndicator color={CERDIK_COLORS.danger} />
         ) : (
-          <Ionicons name="refresh-outline" size={22} color="#DC2626" />
+          <Ionicons name="refresh-outline" size={22} color={CERDIK_COLORS.danger} />
         )}
-        <Text style={{ fontWeight: "900", color: "#DC2626", fontSize: 15 }}>Reset Semua Transaksi</Text>
+        <Text style={{ fontWeight: "900", color: CERDIK_COLORS.danger, fontSize: 15 }}>Reset Semua Transaksi</Text>
       </Pressable>
 
       <CerdikButton title="Logout" onPress={handleLogout} variant="danger" />

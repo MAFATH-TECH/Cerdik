@@ -69,9 +69,9 @@ const clampPercent = (n: number) => {
 };
 
 const getProgressColor = (percentage: number) => {
-  if (percentage < 30) return "#EF4444";
-  if (percentage <= 70) return "#F59E0B";
-  return "#22C55E";
+  if (percentage < 30) return CERDIK_COLORS.danger;
+  if (percentage <= 70) return CERDIK_COLORS.warning;
+  return CERDIK_COLORS.success;
 };
 
 function StaticGoalProgress({ percentage }: { percentage: number }) {
@@ -278,7 +278,7 @@ function RencanakanScreenInner() {
                 <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "700" }}>
                   {goal.emoji ?? "🎯"} {goal.name?.trim() ? goal.name : "Tanpa nama"}
                 </Text>
-                <Text style={{ color: "#16A34A", fontWeight: "700" }}>✓ Tercapai</Text>
+                <Text style={{ color: CERDIK_COLORS.success, fontWeight: "700" }}>✓ Tercapai</Text>
               </View>
               <Text style={{ marginTop: 4, color: CERDIK_COLORS.textSecondary }}>
                 Selesai pada {new Date(goal.completedAt ?? goal.deadline).toLocaleDateString("id-ID")}

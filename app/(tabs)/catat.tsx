@@ -49,7 +49,7 @@ export default function CatatScreen() {
     setSelectedCategory("");
   }, [type]);
 
-  const saveButtonColor = type === "income" ? CERDIK_COLORS.secondary : CERDIK_COLORS.accent;
+  const saveButtonColor = type === "income" ? CERDIK_COLORS.secondary : CERDIK_COLORS.expense;
   const saveButtonLabel = type === "income" ? "Simpan Pemasukan" : "Simpan Pengeluaran";
 
   const showSuccessToast = () => {
@@ -132,7 +132,7 @@ export default function CatatScreen() {
             flex: 1,
             borderRadius: 999,
             paddingVertical: 10,
-            backgroundColor: type === "expense" ? CERDIK_COLORS.accent : "transparent",
+            backgroundColor: type === "expense" ? CERDIK_COLORS.expense : "transparent",
             opacity: isLoading ? 0.6 : 1,
           }}
         >

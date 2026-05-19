@@ -24,7 +24,7 @@ const buttonStyles: Record<ButtonVariant, { backgroundColor: string; borderWidth
     textColor: CERDIK_COLORS.primary,
   },
   danger: {
-    backgroundColor: CERDIK_COLORS.accent,
+    backgroundColor: CERDIK_COLORS.danger,
     textColor: "#FFFFFF",
   },
 };
