@@ -28,10 +28,33 @@ const QUICK_QUESTIONS = [
   "Bantu buat rencana menabung",
   "Apa pengeluaran terborosku?",
 ];
-const AI_ENABLED = false;
+const AI_ENABLED = true;
 
 const formatRupiah = (value: number) => `Rp ${new Intl.NumberFormat("id-ID").format(value)}`;
 const getTxDateValue = (tx: Partial<Transaction>) => tx.date ?? tx.createdAt ?? new Date().toISOString();
+
+/** Render teks dengan segmen **bold** (markdown ringan untuk jawaban AI). */
+function renderInlineMarkdown(text: string, baseColor: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((part) => part.length > 0);
+
+  return parts.map((part, index) => {
+    const isBold = part.startsWith("**") && part.endsWith("**") && part.length > 4;
+    const content = isBold ? part.slice(2, -2) : part;
+
+    return (
+      <Text
+        key={`${index}-${content.slice(0, 12)}`}
+        style={{
+          color: baseColor,
+          lineHeight: 20,
+          fontWeight: isBold ? "700" : "400",
+        }}
+      >
+        {content}
+      </Text>
+    );
+  });
+}
 
 export default function InisiasiScreen() {
   const { transactions, loadTransactions, loadSummary, isLoading: txLoading, error: txError } = useTransactionStore();
@@ -50,7 +73,7 @@ export default function InisiasiScreen() {
 
   useEffect(() => {
     if (!isTyping) return;
-
+  
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(typingOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
@@ -168,31 +191,42 @@ export default function InisiasiScreen() {
     scrollToBottom();
 
     try {
-      const historyForAI: AIChatMessage[] = nextMessages.map((msg) => ({
-        role: msg.sender === "user" ? "user" : "assistant",
-        content: msg.text,
-      }));
+      // History tanpa pesan user yang baru dikirim (pesan itu dikirim terpisah sebagai `message`).
+      const historyForAI: AIChatMessage[] = nextMessages
+        .slice(0, -1)
+        .map((msg) => ({
+          role: msg.sender === "user" ? "user" : "assistant",
+          content: msg.text,
+        }));
+
+      console.log("📤 Mengirim ke CERDIK AI...");
 
       const aiText = await sendMessageToAI(trimmed, historyForAI);
+    
+      console.log("✅ Jawaban AI:", aiText);
+    
       const aiMessage: ChatMessage = {
         id: `ai-${Date.now()}`,
         sender: "ai",
-        text: aiText,
+        text: String(aiText ?? "").trim() || "Maaf, tidak ada jawaban.",
       };
+    
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error) {
+      console.error("❌ CERDIK AI ERROR:", error);
+    
       const aiMessage: ChatMessage = {
         id: `ai-${Date.now()}`,
         sender: "ai",
         text:
           error instanceof Error
-            ? `Maaf, CERDIK AI sedang bermasalah: ${error.message}`
-            : "Maaf, CERDIK AI sedang sibuk. Coba lagi sebentar ya.",
+            ? `Maaf, CERDIK AI sedang bermasalah.\n\n${error.message}`
+            : "Maaf, CERDIK AI sedang sibuk. Silakan coba lagi.",
       };
+    
       setMessages((prev) => [...prev, aiMessage]);
-    } finally {
+    }finally {
       setIsTyping(false);
-      scrollToBottom();
     }
   };
 
@@ -370,8 +404,10 @@ export default function InisiasiScreen() {
                     backgroundColor: isUser ? CERDIK_COLORS.primary : "#F1F5F9",
                   }}
                 >
-                  <Text style={{ color: isUser ? "#FFFFFF" : CERDIK_COLORS.textPrimary, lineHeight: 18 }}>
-                    {msg.text}
+                  <Text style={{ color: isUser ? "#FFFFFF" : CERDIK_COLORS.textPrimary, lineHeight: 20 }}>
+                    {isUser
+                      ? msg.text
+                      : renderInlineMarkdown(msg.text, CERDIK_COLORS.textPrimary)}
                   </Text>
                 </View>
               </View>
@@ -431,9 +467,14 @@ export default function InisiasiScreen() {
 
           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
             <TextInput
+              editable={!isTyping}
               value={inputText}
               onChangeText={setInputText}
-              placeholder="Tulis pertanyaanmu..."
+              placeholder={
+                isTyping
+                  ? "CERDIK AI sedang menjawab..."
+                  : "Tulis pertanyaanmu..."
+              }
               style={{
                 flex: 1,
                 borderWidth: 1,
@@ -454,9 +495,9 @@ export default function InisiasiScreen() {
                 alignItems: "center",
                 justifyContent: "center",
                 backgroundColor: CERDIK_COLORS.primary,
-                opacity: blockingError ? 0.5 : 1,
+                opacity: blockingError || isTyping ? 0.5 : 1,
               }}
-              disabled={Boolean(blockingError)}
+              disabled={Boolean(blockingError) || isTyping}
             >
               <Ionicons name="send" size={18} color="#FFFFFF" />
             </Pressable>

@@ -1,186 +1,221 @@
-// Setup type definitions for built-in Supabase Runtime APIs
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-declare const Deno: {
-  env: {
-    get(key: string): string | undefined;
-  };
-  serve(handler: (req: Request) => Response | Promise<Response>): void;
-};
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+const GEMINI_MODEL = "gemini-3.5-flash";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
-type CategorySummary = { category?: string; total?: number };
+type ChatTurn = {
+  role?: string;
+  content?: string;
+};
 
-function createFallbackAdvice(input: {
-  message: string;
-  financialContext?: {
-    total_pemasukan?: number;
-    total_pengeluaran?: number;
-    sisa?: number;
-    persentase_tabungan?: number;
-    pengeluaran_per_kategori?: CategorySummary[];
-    jumlah_transaksi?: number;
-  };
-}) {
-  const message = (input.message || "").toLowerCase();
-  const context = input.financialContext ?? {};
-  const income = Number(context.total_pemasukan ?? 0);
-  const expense = Number(context.total_pengeluaran ?? 0);
-  const balance = Number(context.sisa ?? income - expense);
-  const savingPct = Number(
-    context.persentase_tabungan ??
-      (income > 0 ? Math.round(((income - expense) / income) * 100) : 0),
-  );
-  const txCount = Number(context.jumlah_transaksi ?? 0);
-  const categories = Array.isArray(context.pengeluaran_per_kategori)
-    ? [...context.pengeluaran_per_kategori]
-        .filter((c) => typeof c?.category === "string")
-        .sort((a, b) => Number(b?.total ?? 0) - Number(a?.total ?? 0))
-    : [];
-  const topCategory = categories[0];
-  const topCategoryName = String(topCategory?.category ?? "belum terdeteksi");
-  const topCategoryAmount = Number(topCategory?.total ?? 0);
+/** Ambil teks jawaban final; abaikan thought parts. */
+function extractAnswerText(candidate: {
+  content?: { parts?: Array<{ text?: string; thought?: boolean }> };
+}): string {
+  const parts = candidate?.content?.parts;
+  if (!Array.isArray(parts) || parts.length === 0) return "";
 
-  if (txCount === 0) {
-    return "Data transaksimu masih kosong. Mulai dari catat pemasukan dan 3 pengeluaran harian dulu, lalu aku bantu evaluasi pola borosmu dengan lebih akurat.";
-  }
-
-  if (message.includes("terboros") || message.includes("boros") || message.includes("kategori")) {
-    if (!topCategory || topCategoryAmount <= 0) {
-      return "Belum terlihat kategori pengeluaran utama. Coba catat transaksi dengan kategori yang konsisten selama 1 minggu agar analisis lebih tajam.";
-    }
-    return `Pengeluaran terbesarmu saat ini ada di kategori ${topCategoryName} sekitar Rp ${topCategoryAmount.toLocaleString("id-ID")}. Coba tetapkan batas mingguan untuk kategori ini agar sisa uangmu lebih aman.`;
-  }
-
-  if (message.includes("hemat")) {
-    return "Tips hemat cepat: pakai aturan 24 jam sebelum beli barang non-prioritas, batasi jajan harian dengan nominal tetap, dan catat semua pengeluaran kecil agar kebocoran uang terlihat.";
-  }
-
-  if (message.includes("menabung") || message.includes("tabung") || message.includes("rencana")) {
-    const targetPct = 20;
-    const targetNominal = Math.max(0, Math.round((income * targetPct) / 100));
-    return `Rencana menabung sederhana: targetkan minimal ${targetPct}% pemasukan (sekitar Rp ${targetNominal.toLocaleString("id-ID")}), simpan di awal saat menerima pemasukan, lalu gunakan sisa uang untuk kebutuhan harian.`;
-  }
-
-  if (income <= 0) {
-    return "Kondisi keuanganmu belum bisa dihitung karena data pemasukan masih nol. Coba catat pemasukan rutin dulu, lalu kita susun strategi hemat dan tabungan yang realistis.";
-  }
-
-  if (balance < 0) {
-    return `Pengeluaranmu melebihi pemasukan sebesar Rp ${Math.abs(balance).toLocaleString("id-ID")}. Prioritaskan kebutuhan wajib dulu dan pangkas 1-2 kategori pengeluaran tertinggi minggu ini.`;
-  }
-
-  if (savingPct >= 20) {
-    return `Kondisi keuanganmu cukup sehat: tabunganmu sekitar ${savingPct}% dari pemasukan. Pertahankan pola ini dan evaluasi kategori ${topCategoryName} agar progres makin cepat.`;
-  }
-
-  return `Kondisi keuanganmu cukup stabil, tapi tabungan baru ${savingPct}%. Naikkan perlahan ke target 20% dengan mengurangi pengeluaran di kategori ${topCategoryName} dan tetapkan batas mingguan.`;
+  return parts
+    .filter((part) => typeof part?.text === "string" && !part.thought)
+    .map((part) => part.text ?? "")
+    .join("")
+    .trim();
 }
 
-Deno.serve(async (req: Request) => {
+/** Rapikan judul format: hilangkan petik, pastikan **bold**. */
+function normalizeAnswerFormat(text: string): string {
+  return text
+    .replace(/["'“”‘’]\s*\*\*(Ringkasan|Analisis|Saran)\*\*\s*["'“”‘’]/gi, "**$1**")
+    .replace(/["'“”‘’]\s*(Ringkasan|Analisis|Saran)\s*["'“”‘’]/gi, "**$1**")
+    .replace(
+      /(^|\n)\s*(?:📊|💡|🎯)?\s*(Ringkasan|Analisis|Saran)\s*:?\s*(?=\n|$)/gi,
+      (_match, prefix: string, title: string) => `${prefix}**${title}**\n`,
+    )
+    .trim();
+}
+
+serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", {
+      headers: corsHeaders,
+    });
   }
 
   try {
-    const { message, financialContext, chatHistory } = await req.json();
-
-    if (!message) {
-      return new Response(JSON.stringify({ error: "Missing `message` in request body." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY belum diset.");
     }
 
-    const systemPrompt = `Kamu adalah CERDIK AI, asisten keuangan 
-personal untuk siswa SMA/MAN.
+    const {
+      message,
+      financialContext,
+      chatHistory,
+    } = await req.json();
 
-Kepribadianmu:
-- Friendly dan supportif seperti kakak yang peduli
-- Bahasa Indonesia yang santai tapi informatif
-- Jawaban singkat, max 3-4 kalimat per respons
-- Hindari istilah keuangan yang terlalu teknis
+    if (!message || typeof message !== "string") {
+      throw new Error("Pesan tidak valid.");
+    }
 
-Konteks keuangan siswa bulan ini:
-${JSON.stringify(financialContext ?? {}, null, 2)}
+    // Prompt pendek = hemat input token. Target jawaban ~80–120 kata.
+    const systemPrompt = `
+Kamu CERDIK AI, asisten literasi keuangan untuk siswa SMA Indonesia.
 
 Aturan:
-- Jangan sarankan investasi berisiko
-- Sesuaikan saran dengan kondisi keuangan siswa
-- Jika tidak ada data, minta siswa mulai mencatat`;
+- Bahasa Indonesia singkat, ramah, mudah dipahami.
+- Jawab maksimal 80–120 kata. Selesai lengkap, jangan potong di tengah.
+- Pakai data keuangan yang diberi; jangan mengarang angka.
+- Jika data kurang, bilang jujur.
+- Larangan: pinjol, judi, investasi berisiko tinggi, aktivitas ilegal.
+- Fokus saran praktis: hemat, catat pengeluaran, menabung, capai goal.
 
-    const messages = [
-      ...(Array.isArray(chatHistory) ? chatHistory.slice(-10) : []),
-      { role: "user", content: message },
+Format jawaban (WAJIB ikuti persis):
+**Ringkasan**
+1–2 kalimat kondisi keuangan.
+
+**Analisis**
+- poin 1
+- poin 2 (opsional)
+
+**Saran**
+- saran 1 yang konkret
+- saran 2 yang konkret (opsional)
+
+Aturan format:
+- Judul hanya: Ringkasan, Analisis, Saran — dibungkus ** seperti contoh di atas.
+- JANGAN pakai tanda petik (" atau ') di sekitar judul.
+- JANGAN tulis judul tanpa **, dan JANGAN ubah nama judul.
+- Jangan tambah emoji pada judul.
+`.trim();
+
+    const history = Array.isArray(chatHistory) ? (chatHistory as ChatTurn[]) : [];
+
+    // Hindari duplikasi pesan user terakhir (client kadang ikut mengirimkannya di history).
+    // Hanya 4 turn terakhir (≈2 Q&A) agar input token hemat.
+    const sanitizedHistory = history
+      .filter((chat, index) => {
+        if (
+          index === history.length - 1 &&
+          chat?.role === "user" &&
+          chat?.content === message
+        ) {
+          return false;
+        }
+        return typeof chat?.content === "string" && chat.content.trim().length > 0;
+      })
+      .slice(-4);
+
+    const contents = [
+      ...sanitizedHistory.map((chat) => ({
+        role: chat.role === "assistant" ? "model" : "user",
+        parts: [{ text: String(chat.content) }],
+      })),
+      {
+        role: "user",
+        parts: [
+          {
+            // Compact JSON (tanpa pretty-print) hemat input token.
+            text:
+              "DATA:\n" +
+              JSON.stringify(financialContext ?? {}) +
+              "\n\nTANYA:\n" +
+              message,
+          },
+        ],
+      },
     ];
 
-    const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
-    const canUseAnthropic = anthropicKey.startsWith("sk-ant-");
-
-    if (!canUseAnthropic) {
-      const fallback = createFallbackAdvice({ message, financialContext });
-      return new Response(JSON.stringify({ message: fallback, source: "fallback" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-3-5-haiku-latest",
-        max_tokens: 500,
-        system: systemPrompt,
-        messages,
-      }),
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      const anthropicMessage =
-        data?.error?.message ??
-        data?.error?.type ??
-        `Anthropic request failed with status ${response.status}`;
-      // Fallback otomatis jika API eksternal belum siap / gagal.
-      const fallback = createFallbackAdvice({ message, financialContext });
-      return new Response(
-        JSON.stringify({
-          message: fallback,
-          source: "fallback",
-          note: `Anthropic unavailable: ${anthropicMessage}`,
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemPrompt }],
+          },
+          contents,
+          generationConfig: {
+            temperature: 0.5,
+            topP: 0.85,
+            // Cukup untuk jawaban pendek + thinking minimal; hemat kuota.
+            maxOutputTokens: 1024,
+            thinkingConfig: {
+              thinkingLevel: "minimal",
+            },
+          },
+        }),
+      },
+    );
+
+    const result = await response.json();
+
+    console.log("===== GEMINI RESPONSE =====");
+    console.log(JSON.stringify(result, null, 2));
+    console.log("===========================");
+
+    if (!response.ok) {
+      console.error(result);
+      throw new Error(
+        result?.error?.message ?? "Gagal memanggil Gemini.",
       );
     }
 
-    const aiMessage = data?.content?.[0]?.text;
+    const candidate = result?.candidates?.[0];
+    const finishReason = candidate?.finishReason as string | undefined;
+    const aiMessage = normalizeAnswerFormat(extractAnswerText(candidate));
 
-    if (typeof aiMessage !== "string" || !aiMessage.trim()) {
-      return new Response(JSON.stringify({ error: "Anthropic response missing text." }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!aiMessage) {
+      const blockReason = result?.promptFeedback?.blockReason;
+      throw new Error(
+        blockReason
+          ? `Jawaban AI diblokir (${blockReason}).`
+          : finishReason
+            ? `Jawaban AI kosong (finishReason: ${finishReason}).`
+            : "Maaf, saya belum dapat memberikan jawaban.",
+      );
     }
 
-    return new Response(JSON.stringify({ message: aiMessage }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ error: msg }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    if (finishReason === "MAX_TOKENS") {
+      console.warn(
+        "Gemini finishReason=MAX_TOKENS — jawaban mungkin masih terpotong.",
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        message: aiMessage,
+        finishReason: finishReason ?? null,
+      }),
+      {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({
+        error:
+          err instanceof Error
+            ? err.message
+            : "Unknown Error",
+      }),
+      {
+        status: 400,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      },
+    );
   }
 });

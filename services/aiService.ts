@@ -1,5 +1,5 @@
 import { FunctionsHttpError } from "@supabase/supabase-js";
-
+import { useGoalStore } from "../stores/useGoalStore";
 import { supabase } from "./supabase";
 import { useTransactionStore } from "../stores/useTransactionStore";
 
@@ -12,17 +12,73 @@ export async function sendMessageToAI(
   userMessage: string,
   chatHistory: ChatMessage[],
 ): Promise<string> {
-  const { summary, transactions } = useTransactionStore.getState();
+  const {
+    summary,
+    transactions,
+    selectedMonth,
+    selectedYear,
+  } = useTransactionStore.getState();
 
+  const { goals } = useGoalStore.getState();
+
+  const totalIncome = summary?.totalIncome ?? 0;
+  const totalExpense = summary?.totalExpense ?? 0;
+  const balance = totalIncome - totalExpense;
+
+  const topExpenseCategory =
+    summary?.byCategory?.length
+      ? [...summary.byCategory].sort((a, b) => b.total - a.total)[0]
+      : null;
+
+  // Konteks dipadatkan agar hemat token input per request.
   const financialContext = {
-    total_pemasukan: summary?.totalIncome ?? 0,
-    total_pengeluaran: summary?.totalExpense ?? 0,
-    sisa: (summary?.totalIncome ?? 0) - (summary?.totalExpense ?? 0),
-    persentase_tabungan: summary?.totalIncome
-      ? Math.round(((summary.totalIncome - summary.totalExpense) / summary.totalIncome) * 100)
-      : 0,
-    pengeluaran_per_kategori: summary?.byCategory ?? [],
-    jumlah_transaksi: transactions.length,
+    periode: { bulan: selectedMonth, tahun: selectedYear },
+    ringkasan: {
+      pemasukan: totalIncome,
+      pengeluaran: totalExpense,
+      saldo: balance,
+      persenTabungan:
+        totalIncome > 0
+          ? Math.round((balance / totalIncome) * 100)
+          : 0,
+      jumlahTransaksi: transactions.length,
+    },
+    kategoriTerbanyak: topExpenseCategory
+      ? {
+          kategori: topExpenseCategory.category,
+          total: topExpenseCategory.total,
+        }
+      : null,
+    pengeluaranPerKategori: (summary?.byCategory ?? [])
+      .slice()
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 3)
+      .map((c) => ({ kategori: c.category, total: c.total })),
+    transaksiTerbaru: transactions
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.date).getTime() - new Date(a.date).getTime(),
+      )
+      .slice(0, 3)
+      .map((tx) => ({
+        tipe: tx.type,
+        kategori: tx.category,
+        jumlah: tx.amount,
+        tanggal: tx.date,
+      })),
+    goals: goals.slice(0, 3).map((goal) => ({
+      nama: goal.name,
+      target: goal.targetAmount,
+      terkumpul: goal.currentAmount,
+      progres:
+        goal.targetAmount > 0
+          ? Math.min(
+              100,
+              Math.round((goal.currentAmount / goal.targetAmount) * 100),
+            )
+          : 0,
+    })),
   };
 
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -31,39 +87,53 @@ export async function sendMessageToAI(
   // Edge Function gateway pada project ini menerima publishable key.
   const apiKey = publishableKey ?? anonKey;
   if (!supabaseUrl || !apiKey) {
-    throw new Error("Supabase URL / API key belum diatur untuk memanggil Edge Function.");
+    throw new Error(
+      "Supabase URL / API key belum diatur untuk memanggil Edge Function.",
+    );
   }
 
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
+  // Jangan kirim ulang pesan user yang sedang diproses (sudah ada di `message`).
+  const priorHistory = chatHistory.filter((chat, index) => {
+    if (
+      index === chatHistory.length - 1 &&
+      chat.role === "user" &&
+      chat.content === userMessage
+    ) {
+      return false;
+    }
+    return true;
+  });
+
   const { data, error } = await supabase.functions.invoke("ai-chat", {
     headers: {
       apikey: apiKey,
       Authorization: `Bearer ${session?.access_token ?? apiKey}`,
     },
-    body: JSON.stringify({
+    body: {
       message: userMessage,
       financialContext,
-      chatHistory: chatHistory.slice(-10),
-    }),
+      chatHistory: priorHistory.slice(-4),
+    },
   });
 
   if (error) {
     if (error instanceof FunctionsHttpError) {
+      let detailMessage = error.message;
       try {
         const details = await error.context.json();
-        const detailMessage =
-          typeof details?.error === "string"
-            ? details.error
-            : typeof details?.message === "string"
-              ? details.message
-              : error.message;
-        throw new Error(detailMessage);
+        if (typeof details?.error === "string") {
+          detailMessage = details.error;
+        } else if (typeof details?.message === "string") {
+          detailMessage = details.message;
+        }
       } catch {
-        throw new Error(error.message);
+        // biarkan detailMessage = error.message
       }
+      throw new Error(detailMessage);
     }
     throw new Error(error.message);
   }
@@ -72,5 +142,5 @@ export async function sendMessageToAI(
     throw new Error("AI response kosong.");
   }
 
-  return data.message;
+  return data.message.trim();
 }
