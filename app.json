@@ -10,7 +10,15 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#1A5C2E",
+          "defaultChannel": "cerdik-daily-reminders"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
@@ -22,7 +30,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.cerdik.app"
+      "bundleIdentifier": "com.cerdik.app",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]
+      }
     },
     "android": {
       "package": "com.cerdik.app",
@@ -30,7 +41,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0E5230"
-      }
+      },
+      "permissions": ["RECEIVE_BOOT_COMPLETED", "VIBRATE", "POST_NOTIFICATIONS"]
     },
     "runtimeVersion": {
       "policy": "sdkVersion"

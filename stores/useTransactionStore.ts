@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import {
+  summarizeTransactions,
   transactionService,
   type Transaction as ServiceTransaction,
   type TransactionType,
@@ -25,6 +26,8 @@ type TransactionState = {
   selectedMonth: number;
   selectedYear: number;
   loadTransactions: () => Promise<void>;
+  /** Satu fetch: isi list + summary (lebih cepat dari loadTransactions + loadSummary). */
+  loadMonthData: () => Promise<void>;
   addTransaction: (data: {
     type: TransactionType;
     amount: number;
@@ -48,7 +51,7 @@ const getNowYear = () => new Date().getFullYear();
 async function reloadMonthState(get: () => TransactionState) {
   const { selectedMonth, selectedYear } = get();
   const list = await transactionService.getTransactions({ month: selectedMonth, year: selectedYear });
-  const summary = await transactionService.getTransactionSummary(selectedMonth, selectedYear);
+  const summary = summarizeTransactions(list);
   return { list, summary };
 }
 
@@ -63,9 +66,21 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   loadTransactions: async () => {
     set({ isLoading: true, error: null });
     try {
-      const { selectedMonth, selectedYear } = get();
-      const list = await transactionService.getTransactions({ month: selectedMonth, year: selectedYear });
-      set({ transactions: list, isLoading: false, error: null });
+      const { list, summary } = await reloadMonthState(get);
+      set({ transactions: list, summary, isLoading: false, error: null });
+    } catch (error) {
+      set({
+        isLoading: false,
+        error: error instanceof Error ? error.message : "Gagal memuat transaksi.",
+      });
+    }
+  },
+
+  loadMonthData: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const { list, summary } = await reloadMonthState(get);
+      set({ transactions: list, summary, isLoading: false, error: null });
     } catch (error) {
       set({
         isLoading: false,
@@ -142,14 +157,11 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   },
 
   loadSummary: async () => {
-    set({ isLoading: true, error: null });
     try {
-      const { selectedMonth, selectedYear } = get();
-      const nextSummary = await transactionService.getTransactionSummary(selectedMonth, selectedYear);
-      set({ summary: nextSummary, isLoading: false, error: null });
+      // List store selalu mewakili selectedMonth/Year setelah load — hitung lokal, tanpa query ekstra.
+      set({ summary: summarizeTransactions(get().transactions), error: null });
     } catch (error) {
       set({
-        isLoading: false,
         error: error instanceof Error ? error.message : "Gagal memuat ringkasan transaksi.",
       });
     }
@@ -158,14 +170,13 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   setSelectedPeriod: async (month, year) => {
     set({ selectedMonth: month, selectedYear: year, error: null, isLoading: true });
     try {
-      await get().loadTransactions();
-      await get().loadSummary();
+      const list = await transactionService.getTransactions({ month, year });
+      set({ transactions: list, summary: summarizeTransactions(list), isLoading: false, error: null });
     } catch (error) {
       set({
+        isLoading: false,
         error: error instanceof Error ? error.message : "Gagal memuat transaksi untuk periode tersebut.",
       });
-    } finally {
-      set({ isLoading: false });
     }
   },
 

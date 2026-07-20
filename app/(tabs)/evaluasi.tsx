@@ -87,8 +87,8 @@ function PulseBlock({
   useEffect(() => {
     pulse.current = Animated.loop(
       Animated.sequence([
-        Animated.timing(opacity, { toValue: 1, duration: 650, useNativeDriver: false }),
-        Animated.timing(opacity, { toValue: 0.5, duration: 650, useNativeDriver: false }),
+        Animated.timing(opacity, { toValue: 1, duration: 650, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.5, duration: 650, useNativeDriver: true }),
       ]),
     );
     pulse.current.start();
@@ -112,19 +112,17 @@ function PulseBlock({
 }
 
 export default function EvaluasiScreen() {
-  const {
-    transactions,
-    loadTransactions,
-    loadSummary,
-    setSelectedPeriod,
-    isLoading,
-    error,
-    summary: storeSummary,
-    selectedMonth,
-    selectedYear,
-    removeTransaction,
-  } = useTransactionStore();
-  const { goals, loadGoals } = useGoalStore();
+  const transactions = useTransactionStore((s) => s.transactions);
+  const loadMonthData = useTransactionStore((s) => s.loadMonthData);
+  const setSelectedPeriod = useTransactionStore((s) => s.setSelectedPeriod);
+  const isLoading = useTransactionStore((s) => s.isLoading);
+  const error = useTransactionStore((s) => s.error);
+  const storeSummary = useTransactionStore((s) => s.summary);
+  const selectedMonth = useTransactionStore((s) => s.selectedMonth);
+  const selectedYear = useTransactionStore((s) => s.selectedYear);
+  const removeTransaction = useTransactionStore((s) => s.removeTransaction);
+  const goals = useGoalStore((s) => s.goals);
+  const loadGoals = useGoalStore((s) => s.loadGoals);
 
   const [period, setPeriod] = useState<PeriodKey>("bulan");
 
@@ -167,10 +165,8 @@ export default function EvaluasiScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadTransactions();
-      loadSummary();
-      loadGoals();
-    }, [loadGoals, loadSummary, loadTransactions]),
+      void Promise.all([loadMonthData(), loadGoals()]);
+    }, [loadGoals, loadMonthData]),
   );
 
   useEffect(() => {
@@ -462,8 +458,7 @@ export default function EvaluasiScreen() {
       <ScreenError
         description={periodError ?? error ?? "Terjadi error saat memuat evaluasi."}
         onRetry={() => {
-          loadTransactions();
-          loadSummary();
+          loadMonthData();
           loadGoals();
           fetchPeriodTransactions().catch(() => undefined);
         }}
@@ -734,8 +729,7 @@ export default function EvaluasiScreen() {
                         removeTransaction(tx.id)
                           .then(() => {
                             fetchPeriodTransactions().catch(() => undefined);
-                            loadTransactions().catch(() => undefined);
-                            loadSummary().catch(() => undefined);
+                            loadMonthData().catch(() => undefined);
                           })
                           .catch(() => undefined);
                       },

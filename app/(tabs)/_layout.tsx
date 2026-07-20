@@ -25,6 +25,8 @@ export default function TabLayout() {
         headerTitleStyle: { fontWeight: "700" },
         tabBarActiveTintColor: CERDIK_COLORS.primary,
         tabBarInactiveTintColor: CERDIK_COLORS.textSecondary,
+        /** Freeze tab tidak aktif agar JS tidak terus update di belakang */
+        freezeOnBlur: true,
         tabBarStyle: {
           backgroundColor: CERDIK_COLORS.card,
           borderTopWidth: 0,

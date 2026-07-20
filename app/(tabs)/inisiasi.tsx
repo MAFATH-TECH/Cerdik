@@ -57,8 +57,14 @@ function renderInlineMarkdown(text: string, baseColor: string) {
 }
 
 export default function InisiasiScreen() {
-  const { transactions, loadTransactions, loadSummary, isLoading: txLoading, error: txError } = useTransactionStore();
-  const { goals, loadGoals, isLoading: goalLoading, error: goalError } = useGoalStore();
+  const transactions = useTransactionStore((s) => s.transactions);
+  const loadMonthData = useTransactionStore((s) => s.loadMonthData);
+  const txLoading = useTransactionStore((s) => s.isLoading);
+  const txError = useTransactionStore((s) => s.error);
+  const goals = useGoalStore((s) => s.goals);
+  const loadGoals = useGoalStore((s) => s.loadGoals);
+  const goalLoading = useGoalStore((s) => s.isLoading);
+  const goalError = useGoalStore((s) => s.error);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -66,10 +72,8 @@ export default function InisiasiScreen() {
   const typingOpacity = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
-    loadTransactions();
-    loadSummary();
-    loadGoals();
-  }, [loadGoals, loadSummary, loadTransactions]);
+    void Promise.all([loadMonthData(), loadGoals()]);
+  }, [loadGoals, loadMonthData]);
 
   useEffect(() => {
     if (!isTyping) return;
@@ -89,9 +93,7 @@ export default function InisiasiScreen() {
 
   const blockingError = txError || goalError;
   const retry = () => {
-    loadTransactions();
-    loadSummary();
-    loadGoals();
+    void Promise.all([loadMonthData(), loadGoals()]);
   };
 
   const recommendations = useMemo<Recommendation[]>(() => {

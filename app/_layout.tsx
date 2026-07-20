@@ -2,12 +2,13 @@ import "react-native-gesture-handler";
 
 import { router, Stack } from "expo-router";
 import { useEffect, useRef } from "react";
-import { Alert, AppState, AppStateStatus, StatusBar } from "react-native";
+import { Alert, AppState, AppStateStatus, InteractionManager, StatusBar } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as Updates from "expo-updates";
 
 import { CERDIK_COLORS } from "../constants/colors";
+import { syncDailyRemindersFromSettings } from "../services/dailyReminderNotifications";
 import { clearLocalAuthSession, getSessionOrClear, isRefreshTokenError } from "../services/authSession";
 import { isSupabaseConfigured, supabase } from "../services/supabase";
 import { useAuthStore } from "../stores/useAuthStore";
@@ -18,13 +19,15 @@ const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
 
 export default function RootLayout() {
   const backgroundAtRef = useRef<number | null>(null);
-  const { loadStoredAuth, logout, syncSession } = useAuthStore();
+  const loadStoredAuth = useAuthStore((s) => s.loadStoredAuth);
+  const logout = useAuthStore((s) => s.logout);
+  const syncSession = useAuthStore((s) => s.syncSession);
   const resetTransactionState = useTransactionStore((s) => s.resetState);
   const resetGoalState = useGoalStore((s) => s.resetState);
 
   useEffect(() => {
     const checkForUpdates = async () => {
-      try {
+      try {  
         if (!Updates.isEmbeddedLaunch) return;
         const update = await Updates.checkForUpdateAsync();
         if (!update.isAvailable) return;
@@ -38,7 +41,11 @@ export default function RootLayout() {
       }
     };
 
-    checkForUpdates().catch(() => undefined);
+    // Jangan bersaing dengan first paint / navigasi awal
+    const task = InteractionManager.runAfterInteractions(() => {
+      checkForUpdates().catch(() => undefined);
+      syncDailyRemindersFromSettings().catch(() => undefined);
+    });
     loadStoredAuth();
 
     const subscription = isSupabaseConfigured
@@ -58,46 +65,50 @@ export default function RootLayout() {
           .data.subscription
       : null;
 
-    const onAppStateChange = async (state: AppStateStatus) => {
+    const onAppStateChange = (state: AppStateStatus) => {
       if (!isSupabaseConfigured) return;
 
       if (state === "background" || state === "inactive") {
         backgroundAtRef.current = Date.now();
-        await supabase.auth.stopAutoRefresh();
+        supabase.auth.stopAutoRefresh().catch(() => undefined);
         return;
       }
 
       if (state === "active") {
-        const { session, error } = await getSessionOrClear();
-        if (error && isRefreshTokenError(error)) {
-          await logout();
-          resetTransactionState();
-          resetGoalState();
-          router.dismissAll();
-          router.replace("/(auth)/login");
-          return;
-        }
+        // Fire-and-forget: jangan blok UI saat app kembali aktif
+        void (async () => {
+          const { session, error } = await getSessionOrClear();
+          if (error && isRefreshTokenError(error)) {
+            await logout();
+            resetTransactionState();
+            resetGoalState();
+            router.dismissAll();
+            router.replace("/(auth)/login");
+            return;
+          }
 
-        if (session) {
-          await syncSession(session).catch(() => undefined);
-          await supabase.auth.startAutoRefresh();
-        }
+          if (session) {
+            await syncSession(session).catch(() => undefined);
+            await supabase.auth.startAutoRefresh();
+          }
 
-        if (!backgroundAtRef.current) return;
-        const elapsed = Date.now() - backgroundAtRef.current;
-        backgroundAtRef.current = null;
-        if (elapsed > SESSION_TIMEOUT_MS) {
-          await logout();
-          resetTransactionState();
-          resetGoalState();
-          router.dismissAll();
-          router.replace("/(auth)/login");
-        }
+          if (!backgroundAtRef.current) return;
+          const elapsed = Date.now() - backgroundAtRef.current;
+          backgroundAtRef.current = null;
+          if (elapsed > SESSION_TIMEOUT_MS) {
+            await logout();
+            resetTransactionState();
+            resetGoalState();
+            router.dismissAll();
+            router.replace("/(auth)/login");
+          }
+        })();
       }
     };
 
     const sub = AppState.addEventListener("change", onAppStateChange);
     return () => {
+      task.cancel();
       sub.remove();
       subscription?.unsubscribe();
     };
@@ -114,6 +125,7 @@ export default function RootLayout() {
             headerTintColor: CERDIK_COLORS.textPrimary,
             headerShadowVisible: false,
             contentStyle: { backgroundColor: CERDIK_COLORS.background },
+            freezeOnBlur: true,
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

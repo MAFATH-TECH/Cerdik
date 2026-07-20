@@ -45,16 +45,24 @@ export default function SummaryCard({
 
   const animated = useRef(new Animated.Value(0)).current;
   const [displayValue, setDisplayValue] = useState(0);
+  const lastPaintRef = useRef(0);
 
   useEffect(() => {
     animated.setValue(0);
+    lastPaintRef.current = 0;
     const anim = Animated.timing(animated, {
       toValue: 1,
       duration: 700,
       useNativeDriver: false,
     });
-    anim.start();
+    anim.start(({ finished }) => {
+      if (finished) setDisplayValue(amountValue);
+    });
+    // ~30fps update teks — animasi tetap terlihat, re-render jauh lebih sedikit
     const id = animated.addListener(({ value }) => {
+      const now = Date.now();
+      if (now - lastPaintRef.current < 33) return;
+      lastPaintRef.current = now;
       setDisplayValue(value * amountValue);
     });
     return () => {

@@ -6,18 +6,16 @@ import { useAuthStore } from "@/stores/useAuthStore";
 
 export default function IndexScreen() {
   const [target, setTarget] = useState<string | null>(null);
-  const { user, isHydrated, loadStoredAuth } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
+  const isHydrated = useAuthStore((s) => s.isHydrated);
 
   useEffect(() => {
     let mounted = true;
 
     const boot = async () => {
       try {
-        if (!isHydrated) {
-          await loadStoredAuth();
-        }
-
-        if (!mounted) return;
+        // Hydrasi auth hanya dari root layout — di sini cukup tunggu isHydrated
+        if (!isHydrated) return;
 
         const onboarded = await AsyncStorage.getItem("CERDIK_ONBOARDED_V1");
         if (!mounted) return;
@@ -37,7 +35,7 @@ export default function IndexScreen() {
     return () => {
       mounted = false;
     };
-  }, [isHydrated, loadStoredAuth, user]);
+  }, [isHydrated, user]);
 
   if (!target) return null;
   return <Redirect href={target as any} />;

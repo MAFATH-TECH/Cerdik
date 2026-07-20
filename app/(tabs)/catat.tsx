@@ -1,4 +1,3 @@
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useEffect, useMemo, useState } from "react";
@@ -31,8 +30,23 @@ const INCOME_CATEGORIES = [
   { label: "Lainnya", emoji: "📦" },
 ] as const;
 
+/**
+ * Lazy-load DateTimePicker (sama seperti Target) agar modul native tidak ikut
+ * di-init saat tab Catat pertama kali dimuat.
+ */
+function LazyDateTimePicker(props: {
+  value: Date;
+  onChange: (event: unknown, date?: Date) => void;
+}) {
+  const DateTimePicker = require("@react-native-community/datetimepicker").default;
+  return (
+    <DateTimePicker value={props.value} mode="date" display="default" onChange={props.onChange} />
+  );
+}
+
 export default function CatatScreen() {
-  const { addTransaction, isLoading } = useTransactionStore();
+  const addTransaction = useTransactionStore((s) => s.addTransaction);
+  const isLoading = useTransactionStore((s) => s.isLoading);
   const [type, setType] = useState<TransactionType>("expense");
   const [amount, setAmount] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
@@ -253,10 +267,8 @@ export default function CatatScreen() {
       </Pressable>
 
       {showDatePicker && !isLoading ? (
-        <DateTimePicker
+        <LazyDateTimePicker
           value={selectedDate}
-          mode="date"
-          display="default"
           onChange={(_, date) => {
             setShowDatePicker(false);
             if (date) setSelectedDate(date);

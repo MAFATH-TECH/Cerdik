@@ -92,7 +92,12 @@ function StaticGoalProgress({ percentage }: { percentage: number }) {
 }
 
 function RencanakanScreenInner() {
-  const { goals, loadGoals, createGoal, addContribution, isLoading, error } = useGoalStore();
+  const goals = useGoalStore((s) => s.goals);
+  const loadGoals = useGoalStore((s) => s.loadGoals);
+  const createGoal = useGoalStore((s) => s.createGoal);
+  const addContribution = useGoalStore((s) => s.addContribution);
+  const isLoading = useGoalStore((s) => s.isLoading);
+  const error = useGoalStore((s) => s.error);
   const [goalModalVisible, setGoalModalVisible] = useState(false);
   const [savingModalGoal, setSavingModalGoal] = useState<Goal | null>(null);
   const [name, setName] = useState("");

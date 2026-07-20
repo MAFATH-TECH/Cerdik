@@ -48,14 +48,21 @@ export default function HomeScreen() {
   const [recentLoading, setRecentLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [weeklyExpenseLimit, setWeeklyExpenseLimit] = useState(0);
-  const { user } = useAuthStore();
-  const { transactions, loadTransactions, loadSummary, isLoading: txLoading, summary, removeTransaction } =
-    useTransactionStore();
-  const { goals, loadGoals } = useGoalStore();
+  const user = useAuthStore((s) => s.user);
+  const transactions = useTransactionStore((s) => s.transactions);
+  const summary = useTransactionStore((s) => s.summary);
+  const txLoading = useTransactionStore((s) => s.isLoading);
+  const loadMonthData = useTransactionStore((s) => s.loadMonthData);
+  const removeTransaction = useTransactionStore((s) => s.removeTransaction);
+  const goals = useGoalStore((s) => s.goals);
+  const loadGoals = useGoalStore((s) => s.loadGoals);
 
-  const activeGoals = goals.filter((goal) => !goal.isCompleted);
+  const activeGoals = useMemo(() => goals.filter((goal) => !goal.isCompleted), [goals]);
   const warnings = useEarlyWarning();
-  const visibleWarnings = warnings.filter((w) => !dismissedWarningIds.includes(w.id));
+  const visibleWarnings = useMemo(
+    () => warnings.filter((w) => !dismissedWarningIds.includes(w.id)),
+    [warnings, dismissedWarningIds],
+  );
   const topWarning = visibleWarnings[0] ?? null;
   const hiddenWarningCount = Math.max(0, visibleWarnings.length - 1);
 
@@ -116,28 +123,25 @@ export default function HomeScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await loadTransactions();
-      await loadSummary();
-      await loadRecent();
-      await loadGoals();
-      await loadWeeklyLimit();
+      await Promise.all([loadMonthData(), loadRecent(), loadGoals(), loadWeeklyLimit()]);
     } finally {
       setRefreshing(false);
     }
-  }, [loadGoals, loadRecent, loadSummary, loadTransactions, loadWeeklyLimit]);
+  }, [loadGoals, loadMonthData, loadRecent, loadWeeklyLimit]);
 
   useFocusEffect(
     useCallback(() => {
       const run = async () => {
-        await loadDismissedWarnings();
-        await loadTransactions();
-        await loadSummary();
-        await loadGoals();
-        await loadRecent();
-        await loadWeeklyLimit();
+        await Promise.all([
+          loadDismissedWarnings(),
+          loadMonthData(),
+          loadGoals(),
+          loadRecent(),
+          loadWeeklyLimit(),
+        ]);
       };
       run().catch(() => undefined);
-    }, [loadDismissedWarnings, loadGoals, loadRecent, loadSummary, loadTransactions, loadWeeklyLimit]),
+    }, [loadDismissedWarnings, loadGoals, loadMonthData, loadRecent, loadWeeklyLimit]),
   );
 
   useEffect(() => {
@@ -175,12 +179,16 @@ export default function HomeScreen() {
   const latestTransactions = recentTransactions;
   const studentName = user?.name ?? "Siswa";
   const studentInitial = studentName.charAt(0).toUpperCase();
-  const todayLabel = new Date().toLocaleDateString("id-ID", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString("id-ID", {
+        weekday: "long",
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      }),
+    [],
+  );
 
   const weeklyExpense = useMemo(() => {
     const now = new Date();

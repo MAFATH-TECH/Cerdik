@@ -15,8 +15,9 @@ export interface Warning {
 }
 
 export function useEarlyWarning(): Warning[] {
-  const { transactions, summary } = useTransactionStore();
-  const { goals } = useGoalStore();
+  const transactions = useTransactionStore((s) => s.transactions);
+  const summary = useTransactionStore((s) => s.summary);
+  const goals = useGoalStore((s) => s.goals);
   const [weeklyExpenseLimit, setWeeklyExpenseLimit] = useState(0);
 
   useEffect(() => {

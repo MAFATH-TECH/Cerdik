@@ -39,6 +39,54 @@ const getAuthedUserId = async () => {
   return user.id;
 };
 
+export type TransactionSummaryResult = {
+  totalIncome: number;
+  totalExpense: number;
+  net: number;
+  totalSaving: number;
+  byCategory: { category: string; total: number }[];
+};
+
+/** Hitung ringkasan dari daftar transaksi (hindari query ganda ke Supabase). */
+export function summarizeTransactions(
+  rows: Array<{ type: TransactionType; amount: number; category: string }>,
+): TransactionSummaryResult {
+  let totalIncome = 0;
+  let totalExpense = 0;
+  let totalSaving = 0;
+  const byCategoryMap = new Map<string, number>();
+
+  for (const row of rows) {
+    const amount = typeof row.amount === "number" ? row.amount : Number(row.amount);
+    const category = row.category ?? "Lainnya";
+
+    if (category === "Tabungan" || category === "Menabung") {
+      totalSaving += amount;
+    }
+
+    if (row.type === "income") {
+      totalIncome += amount;
+    } else {
+      totalExpense += amount;
+      if (category !== "Menabung") {
+        byCategoryMap.set(category, (byCategoryMap.get(category) ?? 0) + amount);
+      }
+    }
+  }
+
+  const byCategory = [...byCategoryMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([cat, total]) => ({ category: cat, total }));
+
+  return {
+    totalIncome,
+    totalExpense,
+    net: totalIncome - totalExpense,
+    totalSaving,
+    byCategory,
+  };
+}
+
 function mapTransactionRow(row: any): Transaction {
   return {
     id: row.id,
@@ -170,66 +218,9 @@ export const transactionService = {
     return (data ?? []).map(mapTransactionRow);
   },
 
-  async getTransactionSummary(month: number, year: number): Promise<{
-    totalIncome: number;
-    totalExpense: number;
-    net: number;
-    totalSaving: number;
-    byCategory: { category: string; total: number }[];
-  }> {
-    const userId = await getAuthedUserId();
-
-    const start = new Date(year, month - 1, 1);
-    const end = new Date(year, month, 1);
-    const startStr = start.toISOString().slice(0, 10);
-    const endStr = end.toISOString().slice(0, 10);
-
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("type, amount, category, date")
-      .eq("user_id", userId)
-      .gte("date", startStr)
-      .lt("date", endStr);
-
-    if (error) throw error;
-
-    const rows = (data ?? []) as any[];
-
-    let totalIncome = 0;
-    let totalExpense = 0;
-    let totalSaving = 0;
-    const byCategoryMap = new Map<string, number>();
-
-    for (const row of rows) {
-      const amount = typeof row.amount === "number" ? row.amount : Number(row.amount);
-      const category = row.category ?? "Lainnya";
-
-      if (category === "Tabungan" || category === "Menabung") {
-        totalSaving += amount;
-      }
-
-      if (row.type === "income") {
-        totalIncome += amount;
-      } else {
-        totalExpense += amount;
-        // Menabung dipisah di donut — tidak digabung ke breakdown pengeluaran biasa
-        if (category !== "Menabung") {
-          byCategoryMap.set(category, (byCategoryMap.get(category) ?? 0) + amount);
-        }
-      }
-    }
-
-    const byCategory = [...byCategoryMap.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([cat, total]) => ({ category: cat, total }));
-
-    return {
-      totalIncome,
-      totalExpense,
-      net: totalIncome - totalExpense,
-      totalSaving,
-      byCategory,
-    };
+  async getTransactionSummary(month: number, year: number): Promise<TransactionSummaryResult> {
+    const list = await transactionService.getTransactions({ month, year });
+    return summarizeTransactions(list);
   },
 
   async deleteTransaction(id: string): Promise<boolean> {
