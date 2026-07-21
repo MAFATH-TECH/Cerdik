@@ -8,7 +8,7 @@ import CerdikCard from "@/components/ui/CerdikCard";
 import CerdikLogo from "@/components/ui/CerdikLogo";
 import { CERDIK_COLORS } from "@/constants/colors";
 import { userSettingsService } from "@/services/userSettingsService";
-import { setDailyRemindersEnabled, scheduleTestReminders } from "@/services/dailyReminderNotifications";
+import { setDailyRemindersEnabled } from "@/services/dailyReminderNotifications";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useGoalStore } from "@/stores/useGoalStore";
 import { useTransactionStore } from "@/stores/useTransactionStore";
@@ -24,7 +24,6 @@ export default function ProfileScreen() {
   const [kelas, setKelas] = useState(user?.kelas ?? "");
   const [sekolah, setSekolah] = useState(user?.sekolah ?? "");
   const [dailyNotificationsEnabled, setDailyNotificationsEnabled] = useState(true);
-  const [testingNotif, setTestingNotif] = useState(false);
   const [weeklyExpenseLimit, setWeeklyExpenseLimit] = useState("0");
 
   useEffect(() => {
@@ -82,23 +81,6 @@ export default function ProfileScreen() {
       if (result.reason) {
         Alert.alert("Notifikasi", result.reason);
       }
-    }
-  };
-
-  const handleTestNotification = async () => {
-    setTestingNotif(true);
-    try {
-      const result = await scheduleTestReminders();
-      if (result.ok) {
-        Alert.alert(
-          "Tes dijadwalkan",
-          `Notifikasi 1: sekitar ${result.waktu1}\nNotifikasi 2: sekitar ${result.waktu2}\n\nMinimize app lalu tunggu — notifikasi muncul di luar CERDIK.`,
-        );
-      } else if (result.reason) {
-        Alert.alert("Tes notifikasi", result.reason);
-      }
-    } finally {
-      setTestingNotif(false);
     }
   };
 
@@ -258,24 +240,6 @@ export default function ProfileScreen() {
             thumbColor={dailyNotificationsEnabled ? CERDIK_COLORS.primary : "#F1F5F9"}
           />
         </View>
-        <Pressable
-          onPress={handleTestNotification}
-          disabled={testingNotif}
-          style={{
-            marginTop: 14,
-            paddingVertical: 12,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: CERDIK_COLORS.primary,
-            backgroundColor: `${CERDIK_COLORS.primary}12`,
-            alignItems: "center",
-            opacity: testingNotif ? 0.6 : 1,
-          }}
-        >
-          <Text style={{ fontWeight: "700", color: CERDIK_COLORS.primary }}>
-            {testingNotif ? "Menjadwalkan..." : "🧪 Tes notifikasi (1 & 2 menit lagi)"}
-          </Text>
-        </Pressable>
       </CerdikCard>
 
       <CerdikCard style={{ marginBottom: 12 }}>

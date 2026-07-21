@@ -8,11 +8,6 @@ export const DAILY_REMINDER_IDS = {
   evening: "cerdik-daily-evening",
 } as const;
 
-const TEST_REMINDER_IDS = {
-  first: "cerdik-test-1",
-  second: "cerdik-test-2",
-} as const;
-
 const ANDROID_CHANNEL_ID = "cerdik-daily-reminders";
 
 const REMINDER_MESSAGES = [
@@ -125,6 +120,12 @@ export async function syncDailyRemindersFromSettings(): Promise<void> {
   if (Platform.OS === "web") return;
 
   try {
+    // Bersihkan sisa jadwal tes lama (jika pernah dijadwalkan)
+    await Promise.allSettled([
+      Notifications.cancelScheduledNotificationAsync("cerdik-test-1"),
+      Notifications.cancelScheduledNotificationAsync("cerdik-test-2"),
+    ]);
+
     const settings = await userSettingsService.getSettings();
     if (settings.dailyNotificationsEnabled) {
       await scheduleDailyReminders();
@@ -159,75 +160,4 @@ export async function setDailyRemindersEnabled(
     };
   }
   return { ok: true };
-}
-
-function formatJamMenit(d: Date): string {
-  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
-}
-
-/** Tes: 2 notifikasi ~1 menit & ~2 menit dari sekarang (tanpa mengubah jadwal harian). */
-export async function scheduleTestReminders(): Promise<{
-  ok: boolean;
-  reason?: string;
-  waktu1?: string;
-  waktu2?: string;
-}> {
-  if (Platform.OS === "web") {
-    return { ok: false, reason: "Notifikasi belum tersedia di web." };
-  }
-
-  const granted = await requestReminderPermission();
-  if (!granted) {
-    return {
-      ok: false,
-      reason: "Izin notifikasi belum diberikan. Aktifkan di pengaturan HP lalu coba lagi.",
-    };
-  }
-
-  await ensureAndroidChannel();
-
-  await Promise.allSettled([
-    Notifications.cancelScheduledNotificationAsync(TEST_REMINDER_IDS.first),
-    Notifications.cancelScheduledNotificationAsync(TEST_REMINDER_IDS.second),
-  ]);
-
-  const androidChannel =
-    Platform.OS === "android" ? { channelId: ANDROID_CHANNEL_ID } : {};
-
-  const at1 = new Date(Date.now() + 60 * 1000);
-  const at2 = new Date(Date.now() + 2 * 60 * 1000);
-  const msg1 = REMINDER_MESSAGES[0];
-  const msg2 = REMINDER_MESSAGES[1];
-
-  await Notifications.scheduleNotificationAsync({
-    identifier: TEST_REMINDER_IDS.first,
-    content: {
-      title: msg1.title,
-      body: msg1.body,
-      sound: "default",
-      data: { type: "test_reminder" },
-      ...androidChannel,
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: at1,
-    },
-  });
-
-  await Notifications.scheduleNotificationAsync({
-    identifier: TEST_REMINDER_IDS.second,
-    content: {
-      title: msg2.title,
-      body: msg2.body,
-      sound: "default",
-      data: { type: "test_reminder" },
-      ...androidChannel,
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: at2,
-    },
-  });
-
-  return { ok: true, waktu1: formatJamMenit(at1), waktu2: formatJamMenit(at2) };
 }
