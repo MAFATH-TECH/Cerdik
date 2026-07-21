@@ -21,6 +21,14 @@ export type CreateGoalInput = {
   note?: string;
 };
 
+export type UpdateGoalInput = {
+  name: string;
+  emoji: string;
+  target_amount: number;
+  deadline: string | Date;
+  note?: string;
+};
+
 export type AddContributionResult = {
   goal: Goal;
   isCompleted: boolean;
@@ -136,6 +144,54 @@ export const goalService = {
     const mappedGoal = mapGoal(updatedGoal);
 
     return { goal: mappedGoal, isCompleted };
+  },
+
+  async updateGoal(id: string, data: UpdateGoalInput): Promise<Goal> {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError) throw userError;
+    if (!user?.id) throw new Error("Sesi login tidak ditemukan.");
+
+    const { data: existing, error: fetchError } = await supabase
+      .from("goals")
+      .select("id, current_amount, is_completed, completed_at")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    const currentAmount = Number((existing as { current_amount: number }).current_amount);
+    const targetAmount = data.target_amount;
+    const isCompleted = currentAmount >= targetAmount;
+    const completedAt = isCompleted
+      ? ((existing as { completed_at?: string | null }).completed_at ?? new Date().toISOString())
+      : null;
+
+    const deadlineIso = data.deadline instanceof Date ? data.deadline.toISOString() : data.deadline;
+
+    const { data: updated, error } = await supabase
+      .from("goals")
+      .update({
+        name: data.name,
+        emoji: data.emoji,
+        target_amount: targetAmount,
+        deadline: deadlineIso.slice(0, 10),
+        note: data.note ?? null,
+        is_completed: isCompleted,
+        completed_at: completedAt,
+      })
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .select("id, name, emoji, target_amount, current_amount, deadline, note, is_completed, created_at, completed_at")
+      .single();
+
+    if (error) throw error;
+
+    return mapGoal(updated);
   },
 
   async deleteGoal(id: string): Promise<boolean> {

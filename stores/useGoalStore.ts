@@ -11,6 +11,7 @@ type GoalState = {
   error: string | null;
   loadGoals: () => Promise<void>;
   createGoal: (data: { name: string; emoji: string; target_amount: number; deadline: string; note?: string }) => Promise<void>;
+  updateGoal: (id: string, data: { name: string; emoji: string; target_amount: number; deadline: string; note?: string }) => Promise<void>;
   addContribution: (goalId: string, amount: number, note?: string) => Promise<void>;
   deleteGoal: (id: string) => Promise<void>;
   resetState: () => void;
@@ -46,6 +47,26 @@ export const useGoalStore = create<GoalState>((set, get) => ({
         error: error instanceof Error ? error.message : "Gagal menyimpan goal.",
       });
       throw error;
+    }
+  },
+
+  updateGoal: async (id, data) => {
+    set({ isLoading: true, error: null });
+    try {
+      const updated = await goalService.updateGoal(id, data);
+      await get().loadGoals();
+
+      if (updated.isCompleted) {
+        Alert.alert("Selamat!", `Target ${updated.name} tercapai!`);
+      }
+    } catch (error) {
+      set({
+        isLoading: false,
+        error: error instanceof Error ? error.message : "Gagal memperbarui goal.",
+      });
+      throw error;
+    } finally {
+      set({ isLoading: false });
     }
   },
 

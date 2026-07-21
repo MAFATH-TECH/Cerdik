@@ -1,7 +1,24 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-const GEMINI_MODEL = "gemini-3.5-flash";
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+
+if (!OPENAI_API_KEY) {
+  throw new Error("OPENAI_API_KEY belum diset pada Supabase Secrets.");
+}
+
+const OPENAI_ENDPOINT = "https://api.openai.com/v1/responses";
+
+/**
+ * Gunakan model yang ingin dipakai.
+ *
+ * Contoh:
+ * gpt-5.6-luna
+ * gpt-5-mini
+ * gpt-4.1
+ *
+ * Tinggal ganti di sini kalau nanti ingin upgrade model.
+ */
+const OPENAI_MODEL = "gpt-5.4-mini";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,142 +26,35 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-type ChatTurn = {
-  role?: string;
-  content?: string;
-};
-
-/** Ambil teks jawaban final; abaikan thought parts. */
-function extractAnswerText(candidate: {
-  content?: { parts?: Array<{ text?: string; thought?: boolean }> };
-}): string {
-  const parts = candidate?.content?.parts;
-  if (!Array.isArray(parts) || parts.length === 0) return "";
-
-  return parts
-    .filter((part) => typeof part?.text === "string" && !part.thought)
-    .map((part) => part.text ?? "")
-    .join("")
-    .trim();
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
 }
 
-/** Rapikan judul format: hilangkan petik, pastikan **bold**. */
-function normalizeAnswerFormat(text: string): string {
-  return text
-    .replace(/["'“”‘’]\s*\*\*(Ringkasan|Analisis|Saran)\*\*\s*["'“”‘’]/gi, "**$1**")
-    .replace(/["'“”‘’]\s*(Ringkasan|Analisis|Saran)\s*["'“”‘’]/gi, "**$1**")
-    .replace(
-      /(^|\n)\s*(?:📊|💡|🎯)?\s*(Ringkasan|Analisis|Saran)\s*:?\s*(?=\n|$)/gi,
-      (_match, prefix: string, title: string) => `${prefix}**${title}**\n`,
-    )
-    .trim();
-}
-function getFriendlyGeminiError(
-  message: string,
-): { status: number; message: string } {
-  let text = message;
-
-try {
-  const parsed = JSON.parse(message);
-
-  text =
-    `${parsed.status ?? ""} ${parsed.code ?? ""} ${parsed.message ?? ""}`;
-} catch {
-  // bukan JSON
+interface AIRequest {
+  message: string;
+  financialContext: unknown;
+  chatHistory?: ChatMessage[];
 }
 
-text = text.toLowerCase();
+/**
+ * ======================================================================
+ * CERDIK SYSTEM PROMPT
+ * ======================================================================
+ *
+ * PASTE SELURUH SYSTEM PROMPT GEMINI YANG SEKARANG
+ * TANPA DIUBAH SATU KATA PUN.
+ *
+ * Jangan diubah.
+ * Jangan dipersingkat.
+ * Jangan dioptimasi.
+ *
+ * OpenAI Responses API menggunakan "instructions",
+ * sehingga prompt ini akan dipakai sebagai instructions.
+ *
+ * ======================================================================
+ */
 
-  // Free Tier / Quota
-  if (
-    text.includes("resource_exhausted") ||
-    text.includes("quota exceeded") ||
-    text.includes("generate_content_free_tier_requests") ||
-    text.includes("429")
-  ) {
-    return {
-      status: 429,
-      message:
-        "CERDIK AI sedang menerima banyak permintaan.\nSilakan coba lagi beberapa saat.",
-    };
-  }
-
-  // Invalid API Key
-  if (
-    text.includes("api key not valid") ||
-    text.includes("api_key_invalid") ||
-    text.includes("permission denied")
-  ) {
-    return {
-      status: 401,
-      message:
-        "Konfigurasi layanan AI tidak valid. Silakan hubungi administrator.",
-    };
-  }
-
-  // Model tidak ditemukan
-  if (
-    text.includes("model not found") ||
-    text.includes("404")
-  ) {
-    return {
-      status: 404,
-      message:
-        "Model AI tidak tersedia saat ini.",
-    };
-  }
-
-  // Safety Block
-  if (
-    text.includes("blocked") ||
-    text.includes("blockreason")
-  ) {
-    return {
-      status: 400,
-      message:
-        "Permintaan tidak dapat diproses karena melanggar kebijakan keamanan AI.",
-    };
-  }
-
-  // Timeout
-  if (
-    text.includes("deadline exceeded") ||
-    text.includes("timeout")
-  ) {
-    return {
-      status: 504,
-      message:
-        "Waktu pemrosesan AI terlalu lama. Silakan coba lagi.",
-    };
-  }
-
-  return {
-    status: 400,
-    message,
-  };
-}
-
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: corsHeaders,
-    });
-  }
-
-  try {
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY belum diset.");
-    }
-
-    const {
-      message,
-      financialContext,
-      chatHistory,
-    } = await req.json();
-
-    if (!message || typeof message !== "string") {
-      throw new Error("Pesan tidak valid.");
-    }
 
     // Prompt pendek = hemat input token. Target jawaban ~80–120 kata.
     const systemPrompt = `
@@ -181,144 +91,230 @@ serve(async (req) => {
     Membantu pengguna memahami kondisi keuangannya dan membangun kebiasaan finansial yang sehat berdasarkan data yang tersedia.
     `.trim();
 
-    const history = Array.isArray(chatHistory) ? (chatHistory as ChatTurn[]) : [];
-
-    // Hindari duplikasi pesan user terakhir (client kadang ikut mengirimkannya di history).
-    // Hanya 4 turn terakhir (≈2 Q&A) agar input token hemat.
-    const sanitizedHistory = history
-      .filter((chat, index) => {
-        if (
-          index === history.length - 1 &&
-          chat?.role === "user" &&
-          chat?.content === message
-        ) {
-          return false;
-        }
-        return typeof chat?.content === "string" && chat.content.trim().length > 0;
-      })
-      .slice(-4);
-
-      const contents = [
-        ...sanitizedHistory.map((chat) => ({
-          role: chat.role === "assistant" ? "model" : "user",
-          parts: [{ text: String(chat.content) }],
-        })),
-      
-        {
-          role: "user",
-          parts: [
-            {
-              text:
-                "KONDISI KEUANGAN PENGGUNA\n" +
-                JSON.stringify(financialContext ?? {}) +
-                "\n\nPERTANYAAN PENGGUNA\n" +
-                message +
-                "\n\nJawablah berdasarkan data di atas. Jika data belum cukup, jelaskan dengan jujur tanpa mengarang informasi.",
-            },
-          ],
-        },
-      ];
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemPrompt }],
-          },
-          contents,
-          generationConfig: {
-            temperature: 0.5,
-            topP: 0.9,
-            maxOutputTokens: 300,
-
-            thinkingConfig: {
-              thinkingLevel: "minimal",
-            },
-          },
-        }),
-      },
-    );
-
-    const result = await response.json();
-
-    console.log("===== GEMINI RESPONSE =====");
-    console.log(JSON.stringify(result, null, 2));
-    console.log("===========================");
-
-    if (!response.ok) {
-      console.error(result);
+    function buildConversationInput(
+      userMessage: string,
+      history: ChatMessage[] = [],
+    ) {
+      const messages = history.map((item) => ({
+        role: item.role,
+        content: item.content,
+      }));
     
-      throw new Error(
-        JSON.stringify({
-          status: result?.error?.status,
-          code: result?.error?.code,
-          message: result?.error?.message,
-        }),
-      );
+      messages.push({
+        role: "user",
+        content: userMessage,
+      });
+    
+      return messages;
     }
 
-    const candidate = result?.candidates?.[0];
-    const finishReason = candidate?.finishReason as string | undefined;
-    const aiMessage = normalizeAnswerFormat(extractAnswerText(candidate));
-
-    if (!aiMessage) {
-      const blockReason = result?.promptFeedback?.blockReason;
-      throw new Error(
-        blockReason
-          ? `Jawaban AI diblokir (${blockReason}).`
-          : finishReason
-            ? `Jawaban AI kosong (finishReason: ${finishReason}).`
-            : "Maaf, saya belum dapat memberikan jawaban.",
-      );
+    function extractResponseText(response: any): string {
+      if (!response?.output) {
+        return "";
+      }
+    
+      for (const item of response.output) {
+        if (item.type !== "message") continue;
+    
+        for (const content of item.content ?? []) {
+          if (
+            content.type === "output_text" &&
+            typeof content.text === "string"
+          ) {
+            return content.text.trim();
+          }
+        }
+      }
+    
+      return "";
     }
 
-    if (finishReason === "MAX_TOKENS") {
-      console.warn(
-        "Gemini finishReason=MAX_TOKENS — jawaban mungkin masih terpotong.",
-      );
+    function getFriendlyError(status: number) {
+      switch (status) {
+        case 400:
+          return "Permintaan tidak dapat diproses. Silakan coba lagi.";
+    
+        case 401:
+          return "Layanan AI sedang mengalami masalah autentikasi.";
+    
+        case 403:
+          return "Layanan AI tidak dapat diakses saat ini.";
+    
+        case 404:
+          return "Layanan AI tidak tersedia.";
+    
+        case 429:
+          return "CERDIK AI sedang melayani banyak pengguna. Silakan coba beberapa saat lagi.";
+    
+        case 500:
+        case 502:
+        case 503:
+          return "CERDIK AI sedang mengalami gangguan. Silakan coba lagi nanti.";
+    
+        default:
+          return "Terjadi kesalahan saat memproses permintaan.";
+      }
     }
 
-    return new Response(
-      JSON.stringify({
-        message: aiMessage,
-        finishReason: finishReason ?? null,
-      }),
-      {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      },
-    );
-  } catch (err) {
-    const detailMessage =
-      err instanceof Error
-        ? err.message
-        : String(err);
-  
-    console.error("===== GEMINI ERROR =====");
-    console.error(detailMessage);
-    console.error("========================");
-  
-    const friendlyError =
-      getFriendlyGeminiError(detailMessage);
-  
-    return new Response(
-      JSON.stringify({
-        error: friendlyError.message,
-      }),
-      {
-        status: friendlyError.status,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      },
-    );
-  }
-});
+    async function generateOpenAIResponse(
+      message: string,
+      financialContext: unknown,
+      chatHistory: ChatMessage[] = [],
+    ): Promise<string> {
+      const controller = new AbortController();
+    
+      const timeout = setTimeout(() => controller.abort(), 30000);
+    
+      try {
+        /**
+         * Tambahkan financial context ke prompt user.
+         *
+         * System Prompt tetap berada di "instructions".
+         */
+        const userPrompt = `
+    DATA KEUANGAN PENGGUNA:
+    
+    ${JSON.stringify(financialContext ?? {}, null, 2)}
+    
+    ==================================================
+    
+    PERTANYAAN PENGGUNA:
+    
+    ${message}
+    `.trim();
+    
+        const input = buildConversationInput(
+          userPrompt,
+          chatHistory,
+        );
+    
+        const response = await fetch(OPENAI_ENDPOINT, {
+          method: "POST",
+    
+          signal: controller.signal,
+    
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+    
+          body: JSON.stringify({
+            model: OPENAI_MODEL,
+    
+            instructions: systemPrompt,
+    
+            input,
+    
+            store: false,
+          }),
+        });
+    
+        const body = await response.json();
+
+        if (body.usage) {
+          console.log(
+            `Token Usage | Input: ${body.usage.input_tokens} | Output: ${body.usage.output_tokens} | Total: ${body.usage.total_tokens}`,
+          );
+        }
+
+        if (!response.ok) {
+          console.error("Responses API Error:", body);
+
+          throw new Error(getFriendlyError(response.status));
+        }
+    
+        const answer = extractResponseText(body);
+    
+        if (!answer) {
+          throw new Error(
+            "AI tidak mengembalikan jawaban.",
+          );
+        }
+    
+        return answer;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          throw new Error(
+            "Permintaan ke layanan AI melebihi batas waktu.",
+          );
+        }
+    
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    serve(async (req) => {
+      // Handle preflight request
+      if (req.method === "OPTIONS") {
+        return new Response("ok", {
+          headers: corsHeaders,
+        });
+      }
+    
+      try {
+        const {
+          message,
+          financialContext,
+          chatHistory = [],
+        }: AIRequest = await req.json();
+    
+        if (!message || typeof message !== "string") {
+          return new Response(
+            JSON.stringify({
+              error: "Pesan tidak boleh kosong.",
+            }),
+            {
+              status: 400,
+              headers: {
+                ...corsHeaders,
+                "Content-Type": "application/json",
+              },
+            },
+          );
+        }
+    
+        console.log("========== CERDIK AI ==========");
+        console.log("Pesan diterima");
+        console.log("History:", chatHistory.length);
+        console.log("================================");
+    
+        const aiResponse = await generateOpenAIResponse(
+          message,
+          financialContext,
+          chatHistory,
+        );
+    
+        return new Response(
+          JSON.stringify({
+            message: aiResponse,
+          }),
+          {
+            status: 200,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+            },
+          },
+        );
+      } catch (error) {
+        console.error("Edge Function Error:", error);
+    
+        return new Response(
+          JSON.stringify({
+            error:
+              error instanceof Error
+                ? error.message
+                : "Terjadi kesalahan.",
+          }),
+          {
+            status: 500,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+            },
+          },
+        );
+      }
+    });

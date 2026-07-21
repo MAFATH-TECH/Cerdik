@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import CerdikButton from "@/components/ui/CerdikButton";
@@ -95,10 +96,13 @@ function RencanakanScreenInner() {
   const goals = useGoalStore((s) => s.goals);
   const loadGoals = useGoalStore((s) => s.loadGoals);
   const createGoal = useGoalStore((s) => s.createGoal);
+  const updateGoal = useGoalStore((s) => s.updateGoal);
+  const deleteGoal = useGoalStore((s) => s.deleteGoal);
   const addContribution = useGoalStore((s) => s.addContribution);
   const isLoading = useGoalStore((s) => s.isLoading);
   const error = useGoalStore((s) => s.error);
   const [goalModalVisible, setGoalModalVisible] = useState(false);
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [savingModalGoal, setSavingModalGoal] = useState<Goal | null>(null);
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("🎯");
@@ -133,23 +137,72 @@ function RencanakanScreenInner() {
     setNote("");
     setDeadline(new Date());
     setShowDeadlinePicker(false);
+    setEditingGoal(null);
   };
 
-  const handleCreateGoal = async () => {
+  const openCreateModal = () => {
+    resetGoalForm();
+    setGoalModalVisible(true);
+  };
+
+  const openEditModal = (goal: Goal) => {
+    setEditingGoal(goal);
+    setName(goal.name?.trim() ?? "");
+    setEmoji(goal.emoji ?? "🎯");
+    setTarget(String(goal.targetAmount || ""));
+    setNote(goal.note?.trim() ?? "");
+    const parsedDeadline = new Date(goal.deadline);
+    setDeadline(Number.isFinite(parsedDeadline.getTime()) ? parsedDeadline : new Date());
+    setShowDeadlinePicker(false);
+    setGoalModalVisible(true);
+  };
+
+  const closeGoalModal = () => {
+    setShowDeadlinePicker(false);
+    setGoalModalVisible(false);
+    resetGoalForm();
+  };
+
+  const handleSaveGoal = async () => {
     const targetAmount = Number(target);
     if (!name.trim() || !targetAmount) {
       Alert.alert("Data belum lengkap", "Nama goal dan target nominal wajib diisi.");
       return;
     }
-    await createGoal({
+
+    const payload = {
       name: name.trim(),
       emoji,
       target_amount: targetAmount,
       deadline: deadline.toISOString(),
       note: note.trim() || undefined,
-    });
-    resetGoalForm();
-    setGoalModalVisible(false);
+    };
+
+    if (editingGoal) {
+      await updateGoal(editingGoal.id, payload);
+    } else {
+      await createGoal(payload);
+    }
+
+    closeGoalModal();
+  };
+
+  const handleDeleteGoal = (goal: Goal) => {
+    const title = goal.name?.trim() ? goal.name : "goal ini";
+    Alert.alert("Hapus Goal", `Yakin mau hapus target "${title}"?`, [
+      { text: "Batal", style: "cancel" },
+      {
+        text: "Hapus",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteGoal(goal.id);
+          } catch {
+            // error sudah diset di store
+          }
+        },
+      },
+    ]);
   };
 
   const handleAddSaving = async () => {
@@ -186,7 +239,43 @@ function RencanakanScreenInner() {
               </Text>
             </View>
           </View>
-          <Text style={{ color: getProgressColor(percentage), fontWeight: "700" }}>{percentage}%</Text>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+            {!goal.isCompleted ? (
+              <>
+                <Pressable
+                  onPress={() => openEditModal(goal)}
+                  hitSlop={8}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 10,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "#EEF2FF",
+                  }}
+                >
+                  <Ionicons name="pencil-outline" size={17} color={CERDIK_COLORS.primary} />
+                </Pressable>
+                <Pressable
+                  onPress={() => handleDeleteGoal(goal)}
+                  hitSlop={8}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 10,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: CERDIK_COLORS.surfaceDanger,
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={17} color={CERDIK_COLORS.danger} />
+                </Pressable>
+              </>
+            ) : null}
+            <Text style={{ color: getProgressColor(percentage), fontWeight: "700", minWidth: 36, textAlign: "right" }}>
+              {percentage}%
+            </Text>
+          </View>
         </View>
 
         <StaticGoalProgress percentage={percentage} />
@@ -240,7 +329,7 @@ function RencanakanScreenInner() {
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
           <Text style={{ fontSize: 24, fontWeight: "700", color: CERDIK_COLORS.textPrimary }}>Target Keuanganku</Text>
           <Pressable
-            onPress={() => setGoalModalVisible(true)}
+            onPress={openCreateModal}
             style={{
               width: 42,
               height: 42,
@@ -262,7 +351,7 @@ function RencanakanScreenInner() {
               Buat goal pertama kamu, lalu isi tabungan pelan-pelan sampai tercapai.
             </Text>
             <View style={{ marginTop: 12 }}>
-              <CerdikButton title="Tambah Goal" onPress={() => setGoalModalVisible(true)} />
+              <CerdikButton title="Tambah Goal" onPress={openCreateModal} />
             </View>
           </CerdikCard>
         ) : (
@@ -298,21 +387,13 @@ function RencanakanScreenInner() {
           visible
           transparent
           animationType="slide"
-          onRequestClose={() => {
-            setShowDeadlinePicker(false);
-            setGoalModalVisible(false);
-            resetGoalForm();
-          }}
+          onRequestClose={closeGoalModal}
         >
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
             <View style={{ flex: 1, justifyContent: "flex-end" }}>
               <Pressable
                 style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.35)" }]}
-                onPress={() => {
-                  setShowDeadlinePicker(false);
-                  setGoalModalVisible(false);
-                  resetGoalForm();
-                }}
+                onPress={closeGoalModal}
               />
 
               <View
@@ -331,6 +412,7 @@ function RencanakanScreenInner() {
                   contentContainerStyle={{ padding: 18, paddingBottom: 36, flexGrow: 1 }}
                 >
                   <ModalGoalForm
+                    mode={editingGoal ? "edit" : "create"}
                     name={name}
                     setName={setName}
                     emoji={emoji}
@@ -344,11 +426,8 @@ function RencanakanScreenInner() {
                     setDeadline={setDeadline}
                     setShowDeadlinePicker={setShowDeadlinePicker}
                     dailyNeed={dailyNeed}
-                    onSave={handleCreateGoal}
-                    onCancel={() => {
-                      setGoalModalVisible(false);
-                      resetGoalForm();
-                    }}
+                    onSave={handleSaveGoal}
+                    onCancel={closeGoalModal}
                     isLoading={isLoading}
                   />
                 </ScrollView>
@@ -424,6 +503,7 @@ function RencanakanScreenInner() {
 }
 
 type ModalGoalFormProps = {
+  mode: "create" | "edit";
   name: string;
   setName: (s: string) => void;
   emoji: string;
@@ -443,6 +523,7 @@ type ModalGoalFormProps = {
 };
 
 function ModalGoalForm({
+  mode,
   name,
   setName,
   emoji,
@@ -462,7 +543,9 @@ function ModalGoalForm({
 }: ModalGoalFormProps) {
   return (
     <>
-      <Text style={{ fontSize: 18, fontWeight: "700", color: CERDIK_COLORS.textPrimary, marginBottom: 10 }}>Tambah Goal Baru</Text>
+      <Text style={{ fontSize: 18, fontWeight: "700", color: CERDIK_COLORS.textPrimary, marginBottom: 10 }}>
+        {mode === "edit" ? "Edit Goal" : "Tambah Goal Baru"}
+      </Text>
       <TextInput
         value={name}
         onChangeText={setName}
@@ -569,7 +652,7 @@ function ModalGoalForm({
         Untuk mencapai target ini, kamu perlu menabung {formatRupiah(dailyNeed)} per hari.
       </Text>
 
-      <CerdikButton title="Simpan Goal" onPress={onSave} loading={isLoading} />
+      <CerdikButton title={mode === "edit" ? "Simpan Perubahan" : "Simpan Goal"} onPress={onSave} loading={isLoading} />
       <View style={{ marginTop: 8 }}>
         <CerdikButton title="Batal" onPress={onCancel} variant="secondary" />
       </View>
