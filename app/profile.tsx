@@ -244,7 +244,7 @@ export default function ProfileScreen() {
 
       <CerdikCard style={{ marginBottom: 12 }}>
         <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "800", marginBottom: 6 }}>
-          Batas Pengeluaran Mingguan (Rp)
+          Batas Pengeluaran Mingguan(Rp)
         </Text>
         <TextInput
           value={weeklyExpenseLimit}
