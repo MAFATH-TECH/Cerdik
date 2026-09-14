@@ -18,16 +18,20 @@
           "color": "#1A5C2E",
           "defaultChannel": "cerdik-daily-reminders"
         }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0E5230"
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true
     },
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0E5230"
-    },
+
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.cerdik.app",
