@@ -44,7 +44,7 @@ export default function TabLayout() {
           fontWeight: "600",
         },
         tabBarIcon: ({ color, size, focused }) => (
-          <Ionicons name={getTabIcon(route.name, focused)} size={route.name === "catat" ? 28 : size} color={color} />
+          <Ionicons name={getTabIcon(route.name, focused)} size={route.name === "catat" ? 28 : size} color={color as string} />
         ),
       })}
     >

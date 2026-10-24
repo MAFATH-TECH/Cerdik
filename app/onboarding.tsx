@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useMemo, useRef, useState } from "react";
-import { Dimensions, Pressable, ScrollView, Text, View } from "react-native";
+import { Dimensions, Pressable, ScrollView, type ScrollViewInstance, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import CerdikLogo from "@/components/ui/CerdikLogo";
@@ -34,7 +34,7 @@ const SLIDES: Slide[] = [
 ];
 
 export default function OnboardingScreen() {
-  const scrollRef = useRef<ScrollView | null>(null);
+  const scrollRef = useRef<ScrollViewInstance | null>(null);
   const [index, setIndex] = useState(0);
   const insets = useSafeAreaInsets();
 

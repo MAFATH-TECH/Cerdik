@@ -97,7 +97,7 @@ export default function TransactionsScreen() {
               <View key={i} style={{ height: 56, borderRadius: 14, backgroundColor: "#EEF2F7" }} />
             ))}
           </View>
-        ) : null
+        ) : undefined
       }
       renderItem={({ item: tx, index }) => {
         const isExpense = tx.type === "expense";

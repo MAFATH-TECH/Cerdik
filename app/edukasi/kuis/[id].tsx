@@ -415,8 +415,8 @@ export default function KuisDetailScreen() {
 
             let bg = "#FFFFFF";
             let borderColor = "#E0E0E0";
-            let labelBg = EDUKASI_COLORS.cardBg;
-            let labelColor = EDUKASI_COLORS.textDark;
+            let labelBg: string = EDUKASI_COLORS.cardBg;
+            let labelColor: string = EDUKASI_COLORS.textDark;
             let opacity = 1;
 
             if (isAnswered) {

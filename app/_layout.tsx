@@ -2,7 +2,7 @@ import "react-native-gesture-handler";
 
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Alert, AppState, AppStateStatus, InteractionManager, StatusBar, View, Text, ActivityIndicator } from "react-native";
+import { Alert, AppState, AppStateStatus, StatusBar, View, Text, ActivityIndicator } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as Updates from "expo-updates";
@@ -16,6 +16,8 @@ import { useGoalStore } from "../stores/useGoalStore";
 import { useTransactionStore } from "../stores/useTransactionStore";
 
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
+
+export const unstable_settings = { initialRouteName: "index" };
 
 export default function RootLayout() {
   const [isUpdating, setIsUpdating] = useState(false); // <--- Tambahkan ini
@@ -62,10 +64,10 @@ export default function RootLayout() {
       };
   
       // Jangan bersaing dengan first paint / navigasi awal
-      const task = InteractionManager.runAfterInteractions(() => {
+      const task = setTimeout(() => {
         checkForUpdates().catch(() => undefined);
         syncDailyRemindersFromSettings().catch(() => undefined);
-      });
+      }, 0);
       loadStoredAuth();
   
       const subscription = isSupabaseConfigured
@@ -129,7 +131,7 @@ export default function RootLayout() {
   
       const sub = AppState.addEventListener("change", onAppStateChange);
       return () => {
-        task.cancel();
+        clearTimeout(task);
         sub.remove();
         subscription?.unsubscribe();
       };
@@ -163,7 +165,6 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <StatusBar barStyle="dark-content" />
         <Stack
-          initialRouteName="index"
           screenOptions={{
             headerStyle: { backgroundColor: CERDIK_COLORS.card },
             headerTintColor: CERDIK_COLORS.textPrimary,

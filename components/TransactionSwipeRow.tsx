@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { type ReactNode, useCallback, useRef } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Swipeable } from "react-native-gesture-handler";
+import Swipeable, { type SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import { CERDIK_COLORS } from "@/constants/colors";
 
@@ -14,7 +14,7 @@ type Props = {
 const ACTION_WIDTH = 76;
 
 function TransactionSwipeRow({ children, onEdit, onDelete }: Props) {
-  const swipeRef = useRef<Swipeable>(null);
+  const swipeRef = useRef<SwipeableMethods>(null);
 
   const renderRightActions = useCallback(
     () => (

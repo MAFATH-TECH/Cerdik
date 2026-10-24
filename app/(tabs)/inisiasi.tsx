@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
+import { Animated, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, type ScrollViewInstance, Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
 
 import { ScreenError } from "@/components/ui/ScreenState";
 import { CERDIK_COLORS } from "../../constants/colors";
@@ -68,7 +68,7 @@ export default function InisiasiScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const typingOpacity = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {

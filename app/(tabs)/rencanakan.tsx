@@ -392,7 +392,7 @@ function RencanakanScreenInner() {
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
             <View style={{ flex: 1, justifyContent: "flex-end" }}>
               <Pressable
-                style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.35)" }]}
+                style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.35)" }]}
                 onPress={closeGoalModal}
               />
 
@@ -434,9 +434,9 @@ function RencanakanScreenInner() {
               </View>
 
               {showDeadlinePicker && Platform.OS === "android" ? (
-                <View style={[StyleSheet.absoluteFillObject, { zIndex: 20, elevation: 24 }]} pointerEvents="box-none">
+                <View style={[StyleSheet.absoluteFill, { zIndex: 20, elevation: 24 }]} pointerEvents="box-none">
                   <Pressable
-                    style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.4)" }]}
+                    style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.4)" }]}
                     onPress={() => setShowDeadlinePicker(false)}
                   />
                   <View
