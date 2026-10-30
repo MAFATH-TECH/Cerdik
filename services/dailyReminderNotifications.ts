@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 
+import { getActiveUserId } from "@/services/accountStorage";
 import { userSettingsService } from "@/services/userSettingsService";
 
 export const DAILY_REMINDER_IDS = {
@@ -125,6 +126,9 @@ export async function syncDailyRemindersFromSettings(): Promise<void> {
       Notifications.cancelScheduledNotificationAsync("cerdik-test-1"),
       Notifications.cancelScheduledNotificationAsync("cerdik-test-2"),
     ]);
+
+    // Pengaturan pengingat milik akun yang login; tanpa akun aktif jadwal dibiarkan apa adanya.
+    if (!(await getActiveUserId())) return;
 
     const settings = await userSettingsService.getSettings();
     if (settings.dailyNotificationsEnabled) {

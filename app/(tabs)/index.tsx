@@ -1,18 +1,21 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import AccountSwitcherSheet from "@/components/AccountSwitcherSheet";
 import DraggableEdukasiFab from "@/components/DraggableEdukasiFab";
 import TransactionSwipeRow from "@/components/TransactionSwipeRow";
 import CerdikLogo from "@/components/ui/CerdikLogo";
 import SummaryCard from "@/components/ui/SummaryCard";
 import { useEarlyWarning } from "@/hooks/useEarlyWarning";
+import { getActiveUserId, scopedKey } from "@/services/accountStorage";
 import { userSettingsService } from "@/services/userSettingsService";
 import { CERDIK_COLORS } from "../../constants/colors";
+import { useAccountStore } from "../../stores/useAccountStore";
 import { useAuthStore } from "../../stores/useAuthStore";
 import { useGoalStore } from "../../stores/useGoalStore";
 import { Transaction, useTransactionStore } from "../../stores/useTransactionStore";
@@ -48,6 +51,8 @@ export default function HomeScreen() {
   const [recentLoading, setRecentLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [weeklyExpenseLimit, setWeeklyExpenseLimit] = useState(0);
+  const [accountSheetVisible, setAccountSheetVisible] = useState(false);
+  const switchEpoch = useAccountStore((s) => s.switchEpoch);
   const user = useAuthStore((s) => s.user);
   const transactions = useTransactionStore((s) => s.transactions);
   const summary = useTransactionStore((s) => s.summary);
@@ -67,23 +72,27 @@ export default function HomeScreen() {
   const hiddenWarningCount = Math.max(0, visibleWarnings.length - 1);
 
   const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const warningStorageKey = useMemo(() => `cerdik:ews:dismissed:${todayKey}`, [todayKey]);
+  /** Peringatan yang ditutup disimpan per akun dan per hari. */
+  const getWarningStorageKey = useCallback(async () => {
+    const userId = await getActiveUserId();
+    return userId ? scopedKey(`cerdik:ews:dismissed:${todayKey}`, userId) : null;
+  }, [todayKey]);
 
   const dismissWarning = useCallback(
     async (id: string) => {
-      setDismissedWarningIds((prev) => {
-        if (prev.includes(id)) return prev;
-        const next = [...prev, id];
-        AsyncStorage.setItem(warningStorageKey, JSON.stringify(next)).catch(() => undefined);
-        return next;
-      });
+      if (dismissedWarningIds.includes(id)) return;
+      const next = [...dismissedWarningIds, id];
+      setDismissedWarningIds(next);
+      const storageKey = await getWarningStorageKey();
+      if (storageKey) AsyncStorage.setItem(storageKey, JSON.stringify(next)).catch(() => undefined);
     },
-    [warningStorageKey],
+    [dismissedWarningIds, getWarningStorageKey],
   );
 
   const loadDismissedWarnings = useCallback(async () => {
     try {
-      const raw = await AsyncStorage.getItem(warningStorageKey);
+      const storageKey = await getWarningStorageKey();
+      const raw = storageKey ? await AsyncStorage.getItem(storageKey) : null;
       if (!raw) {
         setDismissedWarningIds([]);
         return;
@@ -97,7 +106,7 @@ export default function HomeScreen() {
     } catch {
       setDismissedWarningIds([]);
     }
-  }, [warningStorageKey]);
+  }, [getWarningStorageKey]);
 
   const loadRecent = useCallback(async () => {
     setRecentLoading(true);
@@ -129,20 +138,29 @@ export default function HomeScreen() {
     }
   }, [loadGoals, loadMonthData, loadRecent, loadWeeklyLimit]);
 
+  const reloadAll = useCallback(async () => {
+    await Promise.all([
+      loadDismissedWarnings(),
+      loadMonthData(),
+      loadGoals(),
+      loadRecent(),
+      loadWeeklyLimit(),
+    ]);
+  }, [loadDismissedWarnings, loadGoals, loadMonthData, loadRecent, loadWeeklyLimit]);
+
   useFocusEffect(
     useCallback(() => {
-      const run = async () => {
-        await Promise.all([
-          loadDismissedWarnings(),
-          loadMonthData(),
-          loadGoals(),
-          loadRecent(),
-          loadWeeklyLimit(),
-        ]);
-      };
-      run().catch(() => undefined);
-    }, [loadDismissedWarnings, loadGoals, loadMonthData, loadRecent, loadWeeklyLimit]),
+      reloadAll().catch(() => undefined);
+    }, [reloadAll]),
   );
+
+  // Ganti akun lewat sheet di beranda tidak memindahkan fokus, jadi data dimuat ulang di sini.
+  const handledEpochRef = useRef(switchEpoch);
+  useEffect(() => {
+    if (handledEpochRef.current === switchEpoch) return;
+    handledEpochRef.current = switchEpoch;
+    reloadAll().catch(() => undefined);
+  }, [reloadAll, switchEpoch]);
 
   useEffect(() => {
     if (topWarning?.severity === "high" || topWarning?.severity === "medium") {
@@ -231,6 +249,11 @@ export default function HomeScreen() {
         </View>
         <Pressable
           onPress={() => router.push("/profile")}
+          onLongPress={() => {
+            Haptics.selectionAsync().catch(() => undefined);
+            setAccountSheetVisible(true);
+          }}
+          accessibilityLabel="Profil. Tekan lama untuk ganti akun"
           style={{
             width: 44,
             height: 44,
@@ -616,6 +639,7 @@ export default function HomeScreen() {
     </ScrollView>
 
     <DraggableEdukasiFab />
+    <AccountSwitcherSheet visible={accountSheetVisible} onClose={() => setAccountSheetVisible(false)} />
     </View>
   );
 }

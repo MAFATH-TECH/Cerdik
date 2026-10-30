@@ -1,6 +1,6 @@
 import "react-native-gesture-handler";
 
-import { router, Stack } from "expo-router";
+import { Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Alert, AppState, AppStateStatus, StatusBar, View, Text, ActivityIndicator } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -9,11 +9,10 @@ import * as Updates from "expo-updates";
 
 import { CERDIK_COLORS } from "../constants/colors";
 import { syncDailyRemindersFromSettings } from "../services/dailyReminderNotifications";
-import { clearLocalAuthSession, getSessionOrClear, isRefreshTokenError } from "../services/authSession";
+import { getSessionOrClear, isRefreshTokenError } from "../services/authSession";
 import { isSupabaseConfigured, supabase } from "../services/supabase";
+import { useAccountStore } from "../stores/useAccountStore";
 import { useAuthStore } from "../stores/useAuthStore";
-import { useGoalStore } from "../stores/useGoalStore";
-import { useTransactionStore } from "../stores/useTransactionStore";
 
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -23,10 +22,11 @@ export default function RootLayout() {
   const [isUpdating, setIsUpdating] = useState(false); // <--- Tambahkan ini
   const backgroundAtRef = useRef<number | null>(null);
   const loadStoredAuth = useAuthStore((s) => s.loadStoredAuth);
-  const logout = useAuthStore((s) => s.logout);
   const syncSession = useAuthStore((s) => s.syncSession);
-  const resetTransactionState = useTransactionStore((s) => s.resetState);
-  const resetGoalState = useGoalStore((s) => s.resetState);
+  const hydrateAccounts = useAccountStore((s) => s.hydrate);
+  const upsertAccountFromSession = useAccountStore((s) => s.upsertFromSession);
+  const logoutActiveAccount = useAccountStore((s) => s.logoutActive);
+  const restoreFromSaved = useAccountStore((s) => s.restoreFromSaved);
 
     useEffect(() => {
       const checkForUpdates = async () => {
@@ -66,10 +66,25 @@ export default function RootLayout() {
       // Jangan bersaing dengan first paint / navigasi awal
       const task = setTimeout(() => {
         checkForUpdates().catch(() => undefined);
-        syncDailyRemindersFromSettings().catch(() => undefined);
       }, 0);
-      loadStoredAuth();
-  
+
+      const bootstrap = async () => {
+        await hydrateAccounts();
+        await loadStoredAuth();
+
+        const { session } = useAuthStore.getState();
+        if (session) {
+          // Sesi yang sudah ada sebelum fitur ganti akun otomatis masuk ke daftar akun.
+          await upsertAccountFromSession(session);
+        } else {
+          // Sesi aktif sudah tidak valid, tapi mungkin masih ada akun lain yang tersimpan.
+          await restoreFromSaved();
+        }
+        // Pengingat harian mengikuti pengaturan akun yang aktif.
+        await syncDailyRemindersFromSettings();
+      };
+      bootstrap().catch(() => undefined);
+
       const subscription = isSupabaseConfigured
         ? supabase.auth
             .onAuthStateChange((event, session) => {
@@ -77,10 +92,11 @@ export default function RootLayout() {
                 syncSession(null).catch(() => undefined);
                 return;
               }
+              // Token berputar saat di-refresh — salinan di daftar akun harus selalu yang terbaru.
+              upsertAccountFromSession(session).catch(() => undefined);
               syncSession(session).catch(async (error) => {
                 if (isRefreshTokenError(error)) {
-                  await clearLocalAuthSession();
-                  await logout();
+                  await logoutActiveAccount();
                 }
               });
             })
@@ -102,11 +118,7 @@ export default function RootLayout() {
           void (async () => {
             const { session, error } = await getSessionOrClear();
             if (error && isRefreshTokenError(error)) {
-              await logout();
-              resetTransactionState();
-              resetGoalState();
-              router.dismissAll();
-              router.replace("/(auth)/login");
+              await logoutActiveAccount();
               return;
             }
   
@@ -119,23 +131,26 @@ export default function RootLayout() {
             const elapsed = Date.now() - backgroundAtRef.current;
             backgroundAtRef.current = null;
             if (elapsed > SESSION_TIMEOUT_MS) {
-              await logout();
-              resetTransactionState();
-              resetGoalState();
-              router.dismissAll();
-              router.replace("/(auth)/login");
+              await logoutActiveAccount();
             }
           })();
         }
       };
-  
+
       const sub = AppState.addEventListener("change", onAppStateChange);
       return () => {
         clearTimeout(task);
         sub.remove();
         subscription?.unsubscribe();
       };
-    }, [loadStoredAuth, logout, resetGoalState, resetTransactionState, syncSession]);
+    }, [
+      hydrateAccounts,
+      loadStoredAuth,
+      logoutActiveAccount,
+      restoreFromSaved,
+      syncSession,
+      upsertAccountFromSession,
+    ]);
   
   // Jika pengguna menekan "Restart Sekarang", kunci layar dengan animasi loading ini
   if (isUpdating) {
@@ -188,6 +203,7 @@ export default function RootLayout() {
           <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
           <Stack.Screen name="onboarding" options={{ headerShown: false }} />
           <Stack.Screen name="profile" options={{ title: "Pengaturan" }} />
+          <Stack.Screen name="add-account" options={{ title: "Tambah Akun" }} />
           <Stack.Screen name="transactions" options={{ title: "Semua Transaksi" }} />
           <Stack.Screen name="edit-transaction" options={{ title: "Edit Transaksi" }} />
           <Stack.Screen name="edukasi/index" options={{ headerShown: false }} />

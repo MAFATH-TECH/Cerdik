@@ -1,24 +1,28 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
 
+import AccountSwitcherSheet from "@/components/AccountSwitcherSheet";
 import CerdikButton from "@/components/ui/CerdikButton";
 import CerdikCard from "@/components/ui/CerdikCard";
 import CerdikLogo from "@/components/ui/CerdikLogo";
 import { CERDIK_COLORS } from "@/constants/colors";
+import { MAX_ACCOUNTS } from "@/services/accountStorage";
 import { userSettingsService } from "@/services/userSettingsService";
 import { setDailyRemindersEnabled } from "@/services/dailyReminderNotifications";
+import { useAccountStore } from "@/stores/useAccountStore";
 import { useAuthStore } from "@/stores/useAuthStore";
-import { useGoalStore } from "@/stores/useGoalStore";
 import { useTransactionStore } from "@/stores/useTransactionStore";
 import { displayPhone } from "@/utils/phoneValidator";
 
 export default function ProfileScreen() {
-  const { user, updateProfile, logout, isLoading } = useAuthStore();
-  const resetTransactionState = useTransactionStore((s) => s.resetState);
+  const { user, updateProfile, isLoading } = useAuthStore();
   const resetTransactions = useTransactionStore((s) => s.resetTransactions);
-  const resetGoalState = useGoalStore((s) => s.resetState);
+  const accountCount = useAccountStore((s) => s.accounts.length);
+  const switchEpoch = useAccountStore((s) => s.switchEpoch);
+  const logoutActive = useAccountStore((s) => s.logoutActive);
+  const logoutAll = useAccountStore((s) => s.logoutAll);
+  const [accountSheetVisible, setAccountSheetVisible] = useState(false);
   const [resettingTx, setResettingTx] = useState(false);
   const [name, setName] = useState(user?.name ?? "");
   const [kelas, setKelas] = useState(user?.kelas ?? "");
@@ -43,7 +47,7 @@ export default function ProfileScreen() {
       }
     };
     load();
-  }, []);
+  }, [switchEpoch]);
 
   const canSave = useMemo(() => {
     return name.trim().length >= 2 && kelas.trim().length > 0 && sekolah.trim().length > 0;
@@ -122,17 +126,32 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert("Keluar Akun", "Yakin ingin logout dari CERDIK?", [
+    Alert.alert(
+      "Keluar dari Akun Ini",
+      accountCount > 1
+        ? "Akun ini dikeluarkan dari perangkat, lalu kamu pindah ke akun lain yang tersimpan."
+        : "Yakin ingin logout dari CERDIK?",
+      [
+        { text: "Batal", style: "cancel" },
+        {
+          text: "Logout",
+          style: "destructive",
+          onPress: () => {
+            void logoutActive();
+          },
+        },
+      ],
+    );
+  };
+
+  const handleLogoutAll = () => {
+    Alert.alert("Keluar dari Semua Akun", `Semua ${accountCount} akun akan dikeluarkan dari perangkat ini.`, [
       { text: "Batal", style: "cancel" },
       {
-        text: "Logout",
+        text: "Keluar Semua",
         style: "destructive",
-        onPress: async () => {
-          await logout();
-          resetTransactionState();
-          resetGoalState();
-          router.dismissAll();
-          router.replace("/(auth)/login");
+        onPress: () => {
+          void logoutAll();
         },
       },
     ]);
@@ -162,6 +181,19 @@ export default function ProfileScreen() {
           </Text>
         ) : null}
       </View>
+
+      <CerdikCard style={{ marginBottom: 12 }} onPress={() => setAccountSheetVisible(true)}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Ionicons name="people-outline" size={24} color={CERDIK_COLORS.primary} />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={{ color: CERDIK_COLORS.textPrimary, fontWeight: "800" }}>Ganti Akun</Text>
+            <Text style={{ marginTop: 2, color: CERDIK_COLORS.textSecondary, fontSize: 12 }}>
+              {accountCount} dari {MAX_ACCOUNTS} akun tersimpan di perangkat ini
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={CERDIK_COLORS.textSecondary} />
+        </View>
+      </CerdikCard>
 
       <CerdikCard style={{ marginBottom: 12 }}>
         <Text style={{ color: CERDIK_COLORS.textSecondary, marginBottom: 6 }}>Nama</Text>
@@ -333,9 +365,15 @@ export default function ProfileScreen() {
         <Text style={{ fontWeight: "900", color: CERDIK_COLORS.danger, fontSize: 15 }}>Reset Semua Transaksi</Text>
       </Pressable>
 
-      <CerdikButton title="Logout" onPress={handleLogout} variant="danger" />
+      <CerdikButton title="Keluar dari Akun Ini" onPress={handleLogout} variant="danger" />
+      {accountCount > 1 ? (
+        <View style={{ marginTop: 10 }}>
+          <CerdikButton title="Keluar dari Semua Akun" onPress={handleLogoutAll} variant="secondary" />
+        </View>
+      ) : null}
     </ScrollView>
     </TouchableWithoutFeedback>
+    <AccountSwitcherSheet visible={accountSheetVisible} onClose={() => setAccountSheetVisible(false)} />
     </KeyboardAvoidingView>
   );
 }

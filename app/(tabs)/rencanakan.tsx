@@ -20,6 +20,7 @@ import CerdikCard from "@/components/ui/CerdikCard";
 import CurrencyInput from "@/components/ui/CurrencyInput";
 import { ScreenError, ScreenLoading } from "@/components/ui/ScreenState";
 import { CERDIK_COLORS } from "../../constants/colors";
+import { useAccountStore } from "../../stores/useAccountStore";
 import { Goal, useGoalStore } from "../../stores/useGoalStore";
 import { goalService } from "@/services/goalService";
 
@@ -112,9 +113,11 @@ function RencanakanScreenInner() {
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [savingAmount, setSavingAmount] = useState("");
 
+  const switchEpoch = useAccountStore((s) => s.switchEpoch);
+
   useEffect(() => {
     loadGoals();
-  }, [loadGoals]);
+  }, [loadGoals, switchEpoch]);
 
   const activeGoals = useMemo(() => goals.filter((goal) => !goal.isCompleted), [goals]);
   const completedGoals = useMemo(() => goals.filter((goal) => goal.isCompleted), [goals]);

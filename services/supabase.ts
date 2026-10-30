@@ -55,6 +55,20 @@ export const supabase = createClient(
   },
 });
 
+/**
+ * Client terpisah yang tidak menyimpan sesi & tidak mengirim event ke client utama.
+ * Dipakai untuk memvalidasi/me-refresh token akun lain tanpa mengganggu akun yang sedang aktif.
+ */
+export const createIsolatedClient = () =>
+  createClient(supabaseUrl ?? "https://placeholder.supabase.co", supabaseAnonKey ?? "placeholder-anon-key", {
+    auth: {
+      storageKey: "cerdik-isolated-auth",
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+
 export const getAuthCallbackUrl = () => Linking.createURL("/auth/callback");
 
 export const restoreSessionFromUrl = async (url: string) => {

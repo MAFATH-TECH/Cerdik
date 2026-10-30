@@ -4,6 +4,7 @@ import { Animated, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollVi
 
 import { ScreenError } from "@/components/ui/ScreenState";
 import { CERDIK_COLORS } from "../../constants/colors";
+import { useAccountStore } from "../../stores/useAccountStore";
 import { useGoalStore } from "../../stores/useGoalStore";
 import { Transaction, useTransactionStore } from "../../stores/useTransactionStore";
 import { sendMessageToAI, type ChatMessage as AIChatMessage } from "../../services/aiService";
@@ -71,9 +72,19 @@ export default function InisiasiScreen() {
   const scrollRef = useRef<ScrollViewInstance>(null);
   const typingOpacity = useRef(new Animated.Value(0.4)).current;
 
+  const switchEpoch = useAccountStore((s) => s.switchEpoch);
+
   useEffect(() => {
     void Promise.all([loadMonthData(), loadGoals()]);
-  }, [loadGoals, loadMonthData]);
+  }, [loadGoals, loadMonthData, switchEpoch]);
+
+  // Ganti akun: percakapan AI milik akun sebelumnya tidak boleh terbawa.
+  const [chatEpoch, setChatEpoch] = useState(switchEpoch);
+  if (chatEpoch !== switchEpoch) {
+    setChatEpoch(switchEpoch);
+    setMessages([]);
+    setIsTyping(false);
+  }
 
   useEffect(() => {
     if (!isTyping) return;

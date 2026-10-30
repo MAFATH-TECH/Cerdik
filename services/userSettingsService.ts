@@ -1,5 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { getActiveUserId, scopedKey } from "./accountStorage";
+
 export const SETTINGS_STORAGE_KEY = "cerdik_settings_v1";
 
 export type UserLocalSettings = {
@@ -12,10 +14,17 @@ const DEFAULT_SETTINGS: UserLocalSettings = {
   weeklyExpenseLimit: 0,
 };
 
+/** Pengaturan disimpan per akun; null jika belum ada akun yang login. */
+const getStorageKey = async () => {
+  const userId = await getActiveUserId();
+  return userId ? scopedKey(SETTINGS_STORAGE_KEY, userId) : null;
+};
+
 export const userSettingsService = {
   async getSettings(): Promise<UserLocalSettings> {
     try {
-      const raw = await AsyncStorage.getItem(SETTINGS_STORAGE_KEY);
+      const storageKey = await getStorageKey();
+      const raw = storageKey ? await AsyncStorage.getItem(storageKey) : null;
       if (!raw) return DEFAULT_SETTINGS;
       const parsed = JSON.parse(raw) as Partial<UserLocalSettings>;
       return {
@@ -43,7 +52,10 @@ export const userSettingsService = {
           ? Math.max(0, Math.round(next.weeklyExpenseLimit))
           : current.weeklyExpenseLimit,
     };
-    await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+    const storageKey = await getStorageKey();
+    if (storageKey) {
+      await AsyncStorage.setItem(storageKey, JSON.stringify(merged));
+    }
     return merged;
   },
 };
