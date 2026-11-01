@@ -99,6 +99,82 @@ function mapTransactionRow(row: any): Transaction {
   };
 }
 
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** Batas bulan sebagai string YYYY-MM-DD (kolom `date` bertipe DATE; hindari toISOString yang bergeser zona waktu). */
+export function monthBounds(month: number, year: number): { start: string; end: string } {
+  const nextYear = month === 12 ? year + 1 : year;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  return { start: `${year}-${pad2(month)}-01`, end: `${nextYear}-${pad2(nextMonth)}-01` };
+}
+
+export type MonthlyBalance = {
+  year: number;
+  month: number; // 1-12
+  opening: number;
+  income: number;
+  expense: number;
+  closing: number;
+};
+
+const PAGE_SIZE = 1000;
+
+/** Ambil semua baris (Supabase membatasi 1000 baris per query) lewat paging. */
+async function fetchAllRows<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>,
+): Promise<T[]> {
+  const all: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await fetchPage(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const rows = data ?? [];
+    all.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+  }
+  return all;
+}
+
+/** Susun riwayat saldo per bulan, dari bulan transaksi pertama sampai bulan berjalan (terbaru di awal). */
+export function buildMonthlyBalances(
+  rows: { date: string; type: TransactionType; amount: number }[],
+  nowYear: number,
+  nowMonth: number,
+): MonthlyBalance[] {
+  if (rows.length === 0) return [];
+
+  const perMonth = new Map<string, { income: number; expense: number }>();
+  let firstKey = rows[0].date.slice(0, 7);
+  for (const row of rows) {
+    const key = row.date.slice(0, 7);
+    if (key < firstKey) firstKey = key;
+    const entry = perMonth.get(key) ?? { income: 0, expense: 0 };
+    const amount = typeof row.amount === "number" ? row.amount : Number(row.amount);
+    if (row.type === "income") entry.income += amount;
+    else entry.expense += amount;
+    perMonth.set(key, entry);
+  }
+
+  let year = Number(firstKey.slice(0, 4));
+  let month = Number(firstKey.slice(5, 7));
+  const result: MonthlyBalance[] = [];
+  let opening = 0;
+
+  while (year < nowYear || (year === nowYear && month <= nowMonth)) {
+    const entry = perMonth.get(`${year}-${pad2(month)}`) ?? { income: 0, expense: 0 };
+    const closing = opening + entry.income - entry.expense;
+    result.push({ year, month, opening, income: entry.income, expense: entry.expense, closing });
+    opening = closing;
+    if (month === 12) {
+      year += 1;
+      month = 1;
+    } else {
+      month += 1;
+    }
+  }
+
+  return result.reverse();
+}
+
 export type UpdateTransactionInput = {
   type: TransactionType;
   amount: number;
@@ -177,9 +253,8 @@ export const transactionService = {
       .eq("user_id", userId);
 
     if (typeof options.year === "number" && typeof options.month === "number") {
-      const start = new Date(options.year, options.month - 1, 1);
-      const end = new Date(options.year, options.month, 1);
-      query.gte("date", start.toISOString().slice(0, 10)).lt("date", end.toISOString().slice(0, 10));
+      const { start, end } = monthBounds(options.month, options.year);
+      query.gte("date", start).lt("date", end);
     }
 
     query.order("date", { ascending: false }).order("created_at", { ascending: false });
@@ -216,6 +291,43 @@ export const transactionService = {
     if (error) throw error;
 
     return (data ?? []).map(mapTransactionRow);
+  },
+
+  /** Sisa saldo (pemasukan − pengeluaran) dari semua transaksi sebelum awal bulan tersebut. */
+  async getCarryOverBalance(month: number, year: number): Promise<number> {
+    const userId = await getAuthedUserId();
+    const { start } = monthBounds(month, year);
+
+    const rows = await fetchAllRows<{ type: TransactionType; amount: number }>((from, to) =>
+      supabase
+        .from("transactions")
+        .select("type, amount")
+        .eq("user_id", userId)
+        .lt("date", start)
+        .order("id")
+        .range(from, to),
+    );
+
+    return rows.reduce((sum, row) => {
+      const amount = typeof row.amount === "number" ? row.amount : Number(row.amount);
+      return row.type === "income" ? sum + amount : sum - amount;
+    }, 0);
+  },
+
+  async getMonthlyBalances(): Promise<MonthlyBalance[]> {
+    const userId = await getAuthedUserId();
+
+    const rows = await fetchAllRows<{ date: string; type: TransactionType; amount: number }>((from, to) =>
+      supabase
+        .from("transactions")
+        .select("date, type, amount")
+        .eq("user_id", userId)
+        .order("id")
+        .range(from, to),
+    );
+
+    const now = new Date();
+    return buildMonthlyBalances(rows, now.getFullYear(), now.getMonth() + 1);
   },
 
   async getTransactionSummary(month: number, year: number): Promise<TransactionSummaryResult> {

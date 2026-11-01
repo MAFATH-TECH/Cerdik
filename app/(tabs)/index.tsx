@@ -57,7 +57,9 @@ export default function HomeScreen() {
   const transactions = useTransactionStore((s) => s.transactions);
   const summary = useTransactionStore((s) => s.summary);
   const txLoading = useTransactionStore((s) => s.isLoading);
-  const loadMonthData = useTransactionStore((s) => s.loadMonthData);
+  const carryOver = useTransactionStore((s) => s.carryOver);
+  const loadMonthDataStore = useTransactionStore((s) => s.loadMonthData);
+  const ensureCurrentMonth = useTransactionStore((s) => s.ensureCurrentMonth);
   const removeTransaction = useTransactionStore((s) => s.removeTransaction);
   const goals = useGoalStore((s) => s.goals);
   const loadGoals = useGoalStore((s) => s.loadGoals);
@@ -129,6 +131,12 @@ export default function HomeScreen() {
     }
   }, []);
 
+  /** Pindah ke bulan berjalan bila app terbuka melewati pergantian bulan, lalu muat data bulan itu. */
+  const loadMonthData = useCallback(async () => {
+    await ensureCurrentMonth();
+    await loadMonthDataStore();
+  }, [ensureCurrentMonth, loadMonthDataStore]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -172,7 +180,9 @@ export default function HomeScreen() {
   const totalIncome = summary?.totalIncome ?? 0;
   const totalExpense = summary?.totalExpense ?? 0;
   const totalSavings = summary?.totalSaving ?? 0;
-  const netBalance = summary?.net ?? 0;
+  const monthNet = summary?.net ?? 0;
+  const totalBalance = carryOver + monthNet;
+  const signedRupiah = (amount: number) => `${amount < 0 ? "−" : "+"}${formatRupiah(Math.abs(amount))}`;
 
   /** Persentase dari pemasukan bulan ini saja (sumber: summary = transaksi periode yang sama dengan nominal kartu). */
   const monthShareTrend = useMemo(() => {
@@ -312,22 +322,46 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      <LinearGradient
-        colors={[CERDIK_COLORS.primary, CERDIK_COLORS.secondary]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{ borderRadius: 20, padding: 18, marginBottom: 16 }}
+      <Pressable
+        onPress={() => router.push("/saldo-bulanan" as never)}
+        accessibilityRole="button"
+        accessibilityLabel="Buka riwayat saldo bulanan"
       >
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={{ color: "#FFFFFF", fontWeight: "600", fontSize: 14 }}>Saldo Bersih Bulan Ini</Text>
-          <Pressable onPress={() => setShowBalance((prev) => !prev)}>
-            <Ionicons name={showBalance ? "eye-outline" : "eye-off-outline"} size={20} color="#FFFFFF" />
-          </Pressable>
-        </View>
-        <Text style={{ marginTop: 10, color: "#FFFFFF", fontSize: 28, fontWeight: "700" }}>
-          {showBalance ? formatRupiah(netBalance) : "Rp •••••••"}
-        </Text>
-      </LinearGradient>
+        <LinearGradient
+          colors={[CERDIK_COLORS.primary, CERDIK_COLORS.secondary]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ borderRadius: 20, padding: 18, marginBottom: 16 }}
+        >
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ color: "#FFFFFF", fontWeight: "600", fontSize: 14 }}>Total Saldo</Text>
+            <Pressable onPress={() => setShowBalance((prev) => !prev)} hitSlop={10}>
+              <Ionicons name={showBalance ? "eye-outline" : "eye-off-outline"} size={20} color="#FFFFFF" />
+            </Pressable>
+          </View>
+          <Text style={{ marginTop: 10, color: "#FFFFFF", fontSize: 28, fontWeight: "700" }}>
+            {showBalance ? formatRupiah(totalBalance) : "Rp •••••••"}
+          </Text>
+          <View style={{ marginTop: 12, gap: 4 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: "#FFFFFF", opacity: 0.85, fontSize: 12 }}>Sisa bulan lalu</Text>
+              <Text style={{ color: "#FFFFFF", opacity: 0.85, fontSize: 12, fontWeight: "600" }}>
+                {showBalance ? formatRupiah(carryOver) : "Rp •••••"}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: "#FFFFFF", opacity: 0.85, fontSize: 12 }}>Bulan ini</Text>
+              <Text style={{ color: "#FFFFFF", opacity: 0.85, fontSize: 12, fontWeight: "600" }}>
+                {showBalance ? signedRupiah(monthNet) : "Rp •••••"}
+              </Text>
+            </View>
+          </View>
+          <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Text style={{ color: "#FFFFFF", opacity: 0.85, fontSize: 12 }}>Lihat riwayat saldo</Text>
+            <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
+          </View>
+        </LinearGradient>
+      </Pressable>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, marginBottom: 14 }}>
         <View style={{ width: 175 }}>

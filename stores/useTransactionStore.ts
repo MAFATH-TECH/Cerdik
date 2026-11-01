@@ -21,6 +21,8 @@ export type TransactionSummary = {
 type TransactionState = {
   transactions: Transaction[];
   summary: TransactionSummary | null;
+  /** Sisa saldo semua bulan sebelum selectedMonth/selectedYear. */
+  carryOver: number;
   isLoading: boolean;
   error: string | null;
   selectedMonth: number;
@@ -42,22 +44,31 @@ type TransactionState = {
   resetTransactions: () => Promise<void>;
   loadSummary: () => Promise<void>;
   setSelectedPeriod: (month: number, year: number) => Promise<void>;
+  /** Pindah ke bulan berjalan jika app terbuka melewati pergantian bulan. */
+  ensureCurrentMonth: () => Promise<void>;
   resetState: () => void;
 };
 
 const getNowMonth = () => new Date().getMonth() + 1;
 const getNowYear = () => new Date().getFullYear();
 
+async function loadPeriod(month: number, year: number) {
+  const [list, carryOver] = await Promise.all([
+    transactionService.getTransactions({ month, year }),
+    transactionService.getCarryOverBalance(month, year),
+  ]);
+  return { list, summary: summarizeTransactions(list), carryOver };
+}
+
 async function reloadMonthState(get: () => TransactionState) {
   const { selectedMonth, selectedYear } = get();
-  const list = await transactionService.getTransactions({ month: selectedMonth, year: selectedYear });
-  const summary = summarizeTransactions(list);
-  return { list, summary };
+  return loadPeriod(selectedMonth, selectedYear);
 }
 
 export const useTransactionStore = create<TransactionState>((set, get) => ({
   transactions: [],
   summary: null,
+  carryOver: 0,
   isLoading: false,
   error: null,
   selectedMonth: getNowMonth(),
@@ -66,8 +77,8 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   loadTransactions: async () => {
     set({ isLoading: true, error: null });
     try {
-      const { list, summary } = await reloadMonthState(get);
-      set({ transactions: list, summary, isLoading: false, error: null });
+      const { list, summary, carryOver } = await reloadMonthState(get);
+      set({ transactions: list, summary, carryOver, isLoading: false, error: null });
     } catch (error) {
       set({
         isLoading: false,
@@ -79,8 +90,8 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   loadMonthData: async () => {
     set({ isLoading: true, error: null });
     try {
-      const { list, summary } = await reloadMonthState(get);
-      set({ transactions: list, summary, isLoading: false, error: null });
+      const { list, summary, carryOver } = await reloadMonthState(get);
+      set({ transactions: list, summary, carryOver, isLoading: false, error: null });
     } catch (error) {
       set({
         isLoading: false,
@@ -93,8 +104,8 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       await transactionService.addTransaction(data);
-      const { list, summary } = await reloadMonthState(get);
-      set({ transactions: list, summary, isLoading: false, error: null });
+      const { list, summary, carryOver } = await reloadMonthState(get);
+      set({ transactions: list, summary, carryOver, isLoading: false, error: null });
     } catch (error) {
       set({
         isLoading: false,
@@ -108,8 +119,8 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       await transactionService.updateTransaction(id, data);
-      const { list, summary } = await reloadMonthState(get);
-      set({ transactions: list, summary, isLoading: false, error: null });
+      const { list, summary, carryOver } = await reloadMonthState(get);
+      set({ transactions: list, summary, carryOver, isLoading: false, error: null });
     } catch (error) {
       set({
         isLoading: false,
@@ -125,8 +136,8 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
       const ok = await transactionService.deleteTransaction(id);
       if (!ok) throw new Error("Transaksi tidak ditemukan atau tidak bisa dihapus.");
 
-      const { list, summary } = await reloadMonthState(get);
-      set({ transactions: list, summary, isLoading: false, error: null });
+      const { list, summary, carryOver } = await reloadMonthState(get);
+      set({ transactions: list, summary, carryOver, isLoading: false, error: null });
     } catch (error) {
       set({
         isLoading: false,
@@ -144,9 +155,9 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       await transactionService.resetAllTransactions();
-      set({ transactions: [], summary: null, isLoading: false, error: null });
-      const { list, summary } = await reloadMonthState(get);
-      set({ transactions: list, summary, isLoading: false, error: null });
+      set({ transactions: [], summary: null, carryOver: 0, isLoading: false, error: null });
+      const { list, summary, carryOver } = await reloadMonthState(get);
+      set({ transactions: list, summary, carryOver, isLoading: false, error: null });
     } catch (error) {
       set({
         isLoading: false,
@@ -170,8 +181,8 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   setSelectedPeriod: async (month, year) => {
     set({ selectedMonth: month, selectedYear: year, error: null, isLoading: true });
     try {
-      const list = await transactionService.getTransactions({ month, year });
-      set({ transactions: list, summary: summarizeTransactions(list), isLoading: false, error: null });
+      const { list, summary, carryOver } = await loadPeriod(month, year);
+      set({ transactions: list, summary, carryOver, isLoading: false, error: null });
     } catch (error) {
       set({
         isLoading: false,
@@ -180,10 +191,19 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
     }
   },
 
+  ensureCurrentMonth: async () => {
+    const month = getNowMonth();
+    const year = getNowYear();
+    const { selectedMonth, selectedYear } = get();
+    if (selectedMonth === month && selectedYear === year) return;
+    await get().setSelectedPeriod(month, year);
+  },
+
   resetState: () => {
     set({
       transactions: [],
       summary: null,
+      carryOver: 0,
       isLoading: false,
       error: null,
       selectedMonth: getNowMonth(),

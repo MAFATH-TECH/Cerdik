@@ -205,6 +205,7 @@ export default function RootLayout() {
           <Stack.Screen name="profile" options={{ title: "Pengaturan" }} />
           <Stack.Screen name="add-account" options={{ title: "Tambah Akun" }} />
           <Stack.Screen name="transactions" options={{ title: "Semua Transaksi" }} />
+          <Stack.Screen name="saldo-bulanan" options={{ title: "Riwayat Saldo" }} />
           <Stack.Screen name="edit-transaction" options={{ title: "Edit Transaksi" }} />
           <Stack.Screen name="edukasi/index" options={{ headerShown: false }} />
           <Stack.Screen name="edukasi/pengetahuan" options={{ headerShown: false }} />
